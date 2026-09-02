@@ -29,7 +29,7 @@ import { defineCodeMirrorBrunoVariablesMode } from 'utils/common/codemirror';
 import { MaskedEditor } from 'utils/common/masked-editor';
 import { setupAutoComplete } from 'utils/codemirror/autocomplete';
 import { variableNameRegex, validateName, validateNameError } from 'utils/common/regex';
-import { VARIABLE_ADD_SCOPES } from 'utils/common/constants';
+import { VARIABLE_ADD_SCOPES, SCOPE_ICON, isScopeIconSvg } from 'utils/common/constants';
 import { createAddToScopeSwitcher } from 'utils/codemirror/addToScopeSwitcher';
 import { goToVariableDefinition } from 'utils/codemirror/goToVariableDefinition';
 
@@ -98,6 +98,31 @@ const getScopeLabel = (scopeType) => {
     'pathParam': 'Path Param'
   };
   return labels[scopeType] || scopeType;
+};
+
+const setScopeBadgeContent = (scopeBadge, scopeType, label) => {
+  scopeBadge.innerHTML = '';
+
+  const scopeIcon = SCOPE_ICON[scopeType];
+  if (scopeIcon) {
+    const icon = document.createElement('span');
+    icon.className = 'var-scope-badge-icon';
+    if (isScopeIconSvg(scopeIcon)) {
+      icon.innerHTML = scopeIcon;
+    } else {
+      // Request's entry is the plain letter 'R', same as the "Add to" switcher's badge.
+      icon.classList.add('var-scope-badge-icon-letter');
+      icon.textContent = scopeIcon;
+    }
+    scopeBadge.appendChild(icon);
+  }
+
+  // Kept in its own element (rather than a bare text node) so consumers — including tests —
+  // can read the label alone without the icon's markup affecting `textContent`.
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'var-scope-badge-label';
+  labelSpan.textContent = label;
+  scopeBadge.appendChild(labelSpan);
 };
 
 const NEW_ENVIRONMENT_WAIT_TIMEOUT_MS = 3000;
@@ -397,7 +422,7 @@ export const renderVarInfo = (token, options) => {
 
   header.appendChild(varName);
 
-  scopeBadge.textContent = scopeLabel;
+  setScopeBadgeContent(scopeBadge, displayScopeType, scopeLabel);
   header.appendChild(scopeBadge);
 
   into.appendChild(header);
@@ -784,7 +809,8 @@ export const renderVarInfo = (token, options) => {
         (env) => env.uid === globalEnvironmentsState.activeGlobalEnvironmentUid
       )?.name;
       const addToScopes = getAvailableAddToScopes({
-        activeEnvironmentUid: freshCollectionForScopes?.activeEnvironmentUid,
+        // Only pass the active environment UID if the environment still exists.
+        activeEnvironmentUid: activeEnvironmentName ? freshCollectionForScopes?.activeEnvironmentUid : undefined,
         activeEnvironmentName,
         activeGlobalEnvironmentUid: globalEnvironmentsState.activeGlobalEnvironmentUid,
         activeGlobalEnvironmentName,
@@ -802,7 +828,7 @@ export const renderVarInfo = (token, options) => {
       // This can happen if adding variable in Global Table where collection is not available.
       if (initialScope && initialScope.type !== scopeInfo.type) {
         scopeInfo = buildScopeInfoForSwitch(initialScope);
-        scopeBadge.textContent = getScopeLabel(initialScope.type);
+        setScopeBadgeContent(scopeBadge, initialScope.type, getScopeLabel(initialScope.type));
       }
 
       const removeAddToSwitcher = () => {
@@ -831,7 +857,7 @@ export const renderVarInfo = (token, options) => {
             const updatedScopeInfo = getVariableScope(variableName, freshCollection, freshItem);
             if (updatedScopeInfo) {
               scopeInfo = updatedScopeInfo;
-              scopeBadge.textContent = getScopeLabel(updatedScopeInfo.type);
+              setScopeBadgeContent(scopeBadge, updatedScopeInfo.type, getScopeLabel(updatedScopeInfo.type));
             }
 
             const interpolatedValue = interpolate(value, allVariables);
@@ -851,7 +877,7 @@ export const renderVarInfo = (token, options) => {
           return;
         }
         scopeInfo = newScopeInfo;
-        scopeBadge.textContent = getScopeLabel(newScopeInfo.type);
+        setScopeBadgeContent(scopeBadge, newScopeInfo.type, getScopeLabel(newScopeInfo.type));
 
         // for inline create environment flow, the new variable is persisted immediately after the environment is created and selected.
         if (immediate) {

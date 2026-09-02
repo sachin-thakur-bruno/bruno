@@ -429,7 +429,9 @@ const GlobalStyle = createGlobalStyle`
 
   /* Scope Badge */
   .CodeMirror-brunoVarInfo .var-scope-badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     padding: 0.125rem 0.375rem;
     background: ${(props) => rgba(props.theme.brand, 0.07)};
     border: 1px solid ${(props) => rgba(props.theme.brand, 0.08)};
@@ -438,6 +440,24 @@ const GlobalStyle = createGlobalStyle`
     color: ${(props) => props.theme.brand};
     letter-spacing: 0.03125rem;
     flex-shrink: 0;
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-badge-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: currentColor;
+  }
+
+  /* Request's badge icon is a bare letter ('R'), not SVG — match the SVG icons' ~0.625rem
+     footprint and give it enough weight to read as an icon slot rather than blend into the
+     label text. */
+  .CodeMirror-brunoVarInfo .var-scope-badge-icon-letter {
+    width: 0.625rem;
+    font-weight: 600;
+    font-size: 0.625rem;
+    line-height: 1;
   }
 
   .bruno-var-definition-target {

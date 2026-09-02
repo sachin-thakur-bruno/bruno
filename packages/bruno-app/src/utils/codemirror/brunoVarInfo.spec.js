@@ -535,7 +535,7 @@ describe('renderVarInfo', () => {
     it('should show warning for unknown dynamic variable', () => {
       const { warningNote, scopeBadge } = setupDynamicRender('$unknownFaker');
 
-      expect(scopeBadge.textContent).toBe('Dynamic');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Dynamic');
       expect(warningNote).not.toBeNull();
       expect(warningNote.textContent).toContain('Unknown dynamic variable');
     });
@@ -543,7 +543,7 @@ describe('renderVarInfo', () => {
     it('should show time-based note for $timestamp variable', () => {
       const { readOnlyNote, scopeBadge } = setupDynamicRender('$timestamp');
 
-      expect(scopeBadge.textContent).toBe('Dynamic');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Dynamic');
       expect(readOnlyNote).not.toBeNull();
       expect(readOnlyNote.textContent).toBe('Generates current timestamp on each request');
     });
@@ -551,7 +551,7 @@ describe('renderVarInfo', () => {
     it('should show time-based note for $isoTimestamp variable', () => {
       const { readOnlyNote, scopeBadge } = setupDynamicRender('$isoTimestamp');
 
-      expect(scopeBadge.textContent).toBe('Dynamic');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Dynamic');
       expect(readOnlyNote).not.toBeNull();
       expect(readOnlyNote.textContent).toBe('Generates current timestamp on each request');
     });
@@ -585,7 +585,7 @@ describe('renderVarInfo', () => {
 
       // Guessed scope shows up as the header badge, same as any other variable.
       const scopeBadge = result.querySelector('.var-scope-badge');
-      expect(scopeBadge.textContent).toBe('Request');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Request');
 
       const switcher = result.querySelector('.var-add-to-switcher');
       expect(switcher).not.toBeNull();
@@ -606,13 +606,18 @@ describe('renderVarInfo', () => {
     it('resolves the Environment scope against the real active environment, not whichever environment is merely being displayed', () => {
       getVariableScope.mockReturnValue(null);
       getAvailableAddToScopes.mockReturnValue([]);
+      const freshCollection = {
+        uid: 'col-1',
+        activeEnvironmentUid: 'env-prod',
+        environments: [{ uid: 'env-prod', name: 'Prod' }]
+      };
       store.getState.mockReturnValue({
         globalEnvironments: { globalEnvironments: [], activeGlobalEnvironmentUid: null },
         collections: {
-          collections: [{ uid: 'col-1', activeEnvironmentUid: 'env-prod' }]
+          collections: [freshCollection]
         }
       });
-      findCollectionByUid.mockReturnValue({ uid: 'col-1', activeEnvironmentUid: 'env-prod' });
+      findCollectionByUid.mockReturnValue(freshCollection);
 
       renderVarInfo(
         { string: '{{missingVar}}' },
@@ -625,6 +630,36 @@ describe('renderVarInfo', () => {
 
       expect(getAvailableAddToScopes).toHaveBeenCalledWith(
         expect.objectContaining({ activeEnvironmentUid: 'env-prod' })
+      );
+    });
+
+    it('does not pass through active which is environment deleted but the uid not cleared', () => {
+      getVariableScope.mockReturnValue(null);
+      getAvailableAddToScopes.mockReturnValue([]);
+      const freshCollection = {
+        uid: 'col-1',
+        activeEnvironmentUid: 'env-deleted',
+        environments: []
+      };
+      store.getState.mockReturnValue({
+        globalEnvironments: { globalEnvironments: [], activeGlobalEnvironmentUid: null },
+        collections: {
+          collections: [freshCollection]
+        }
+      });
+      findCollectionByUid.mockReturnValue(freshCollection);
+
+      renderVarInfo(
+        { string: '{{missingVar}}' },
+        {
+          variables: {},
+          collection: { uid: 'col-1', activeEnvironmentUid: 'env-deleted' },
+          item: null
+        }
+      );
+
+      expect(getAvailableAddToScopes).toHaveBeenCalledWith(
+        expect.objectContaining({ activeEnvironmentUid: undefined, activeEnvironmentName: undefined })
       );
     });
 
@@ -675,13 +710,13 @@ describe('renderVarInfo', () => {
       );
 
       const scopeBadge = result.querySelector('.var-scope-badge');
-      expect(scopeBadge.textContent).toBe('Request');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Request');
 
       const switcher = result.querySelector('.var-add-to-switcher');
       switcher.querySelector('.var-add-to-toggle').click();
       switcher.querySelector('[data-testid="var-info-add-to-option-collection"]').click();
 
-      expect(scopeBadge.textContent).toBe('Collection');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Collection');
       // Picking an existing scope only repoints where the next blur-save writes to.
       expect(updateVariableInScope).not.toHaveBeenCalled();
     });
@@ -1067,7 +1102,7 @@ describe('renderVarInfo', () => {
         '$oauth2.credentials.access_token': 'test-token-123'
       });
 
-      expect(scopeBadge.textContent).toBe('OAuth2');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('OAuth2');
     });
 
     it('should show read-only note for valid OAuth2 variables', () => {
@@ -1091,7 +1126,7 @@ describe('renderVarInfo', () => {
     it('should show warning for OAuth2 variable when token is not found', () => {
       const { warningNote, scopeBadge } = setupOAuth2Render('$oauth2.credentials.access_token', {});
 
-      expect(scopeBadge.textContent).toBe('OAuth2');
+      expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('OAuth2');
       expect(warningNote).not.toBeNull();
       expect(warningNote.textContent).toContain('OAuth2 token not found');
     });
