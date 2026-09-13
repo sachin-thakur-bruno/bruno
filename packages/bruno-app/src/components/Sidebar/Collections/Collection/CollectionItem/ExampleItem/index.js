@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useDrag } from 'react-dnd';
+import { getEmptyImage } from 'react-dnd-html5-backend';
 import { addTab, makeTabPermanent } from 'providers/ReduxStore/slices/tabs';
 import {
   updateResponseExample,
@@ -19,8 +21,10 @@ import GenerateCodeItem from '../GenerateCodeItem';
 import toast from 'react-hot-toast';
 import StyledWrapper from './StyledWrapper';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
+import useSidebarSelectionClick from 'hooks/useSidebarSelectionClick';
+import { startBlockedDragTracking } from 'utils/dragBlockedCursor';
 
-const ExampleItem = ({ example, item, collection, depth }) => {
+const ExampleItem = ({ example, item, collection, depth, searchText, openBulkMenu, isItemMultiDragDisabled, multiDragCollections, multiDragItems }) => {
   const { dropdownContainerRef } = useSidebarAccordion();
   const dispatch = useDispatch();
   const activeTabUid = useSelector((state) => state.tabs?.activeTabUid);
@@ -31,6 +35,38 @@ const ExampleItem = ({ example, item, collection, depth }) => {
   const [generateCodeItemModalOpen, setGenerateCodeItemModalOpen] = useState(false);
   const exampleRef = useRef(null);
   const menuDropdownRef = useRef(null);
+
+  const selectedSidebarUids = useSelector((state) => state.collections.selectedSidebarUids);
+  const isSelected = selectedSidebarUids.includes(example.uid);
+  const isMultiSelected = isSelected && selectedSidebarUids.length > 1;
+  const handleSelectionClick = useSidebarSelectionClick({ uid: example.uid, searchText });
+
+  // In the flat/virtualized sidebar an example row is a sibling of its parent request,
+  // not a child, so we derive the parent request's multi-drag state here rather than
+  // receiving it as props from the parent (as the nested tree did on main).
+  const parentIsSelected = selectedSidebarUids.includes(item.uid);
+  const parentIsMultiSelected = parentIsSelected && selectedSidebarUids.length > 1;
+  const parentMultiDragItems = parentIsMultiSelected ? multiDragItems : null;
+  const isParentRedirectedToCollectionDrag = parentIsMultiSelected && multiDragCollections?.length > 0;
+  const isParentDragDisabled = parentIsMultiSelected && isItemMultiDragDisabled && !isParentRedirectedToCollectionDrag;
+
+  const isRedirectedToRequestDrag = isMultiSelected && selectedSidebarUids.includes(item.uid) && !isParentDragDisabled;
+
+  const [, drag, dragPreview] = useDrag({
+    type: 'collection-item',
+    item: {
+      ...item,
+      sourceCollectionUid: collection.uid,
+      wasSelected: true,
+      ...(parentMultiDragItems ? { multiSelectedItems: parentMultiDragItems } : {})
+    },
+    canDrag: isRedirectedToRequestDrag,
+    options: {
+      dropEffect: 'move'
+    }
+  });
+  drag(exampleRef);
+  dragPreview(getEmptyImage(), { captureDraggingState: true });
 
   // Indentation comes from the flattener, which already emits example rows one level
   // deeper than their parent request.
@@ -48,6 +84,12 @@ const ExampleItem = ({ example, item, collection, depth }) => {
       exampleName: example.name,
       exampleIndex: typeof exampleIndex === 'number' && exampleIndex >= 0 ? exampleIndex : undefined
     }));
+  };
+
+  const handleClick = (event) => {
+    if (handleSelectionClick(event)) return;
+    if (event && event.detail !== 1) return;
+    handleExampleClick();
   };
 
   const handleDoubleClick = () => {
@@ -165,19 +207,29 @@ const ExampleItem = ({ example, item, collection, depth }) => {
   const handleContextMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (isMultiSelected) {
+      openBulkMenu(e);
+      return;
+    }
+
     menuDropdownRef.current?.show();
   };
 
   const itemRowClassName = classnames('flex collection-item-name relative items-center', {
-    'item-focused-in-tab': isExampleActive
+    'item-focused-in-tab': isExampleActive,
+    'collection-item-selected': isSelected,
+    'drag-disabled': !isRedirectedToRequestDrag
   });
 
   return (
     <StyledWrapper
       ref={exampleRef}
       data-testid="sidebar-response-example-item"
+      data-selected={isSelected ? 'true' : undefined}
       className={itemRowClassName}
-      onClick={handleExampleClick}
+      onMouseDown={isMultiSelected && !isRedirectedToRequestDrag ? startBlockedDragTracking : undefined}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
     >
@@ -200,18 +252,20 @@ const ExampleItem = ({ example, item, collection, depth }) => {
         <ExampleIcon size={16} color="currentColor" className="example-icon mr-1 flex-shrink-0" />
         <span className="item-name truncate">{example.name}</span>
       </div>
-      <div className="menu-icon pr-2">
-        <MenuDropdown
-          ref={menuDropdownRef}
-          items={buildMenuItems()}
-          placement="bottom-start"
-          appendTo={dropdownContainerRef?.current || document.body}
-          popperOptions={{ strategy: 'fixed' }}
-          data-testid="response-example-menu"
-        >
-          <IconDots size={22} data-testid="response-example-menu-icon" />
-        </MenuDropdown>
-      </div>
+      {!isMultiSelected && (
+        <div className="menu-icon pr-2">
+          <MenuDropdown
+            ref={menuDropdownRef}
+            items={buildMenuItems()}
+            placement="bottom-start"
+            appendTo={dropdownContainerRef?.current || document.body}
+            popperOptions={{ strategy: 'fixed' }}
+            data-testid="response-example-menu"
+          >
+            <IconDots size={22} data-testid="response-example-menu-icon" />
+          </MenuDropdown>
+        </div>
+      )}
 
       {showRenameModal && (
         <Modal

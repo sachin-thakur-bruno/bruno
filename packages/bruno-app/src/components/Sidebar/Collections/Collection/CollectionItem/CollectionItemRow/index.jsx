@@ -57,7 +57,8 @@ import {
   determineCollectionItemDrop,
   getInitialExampleName,
   findParentItemInCollection,
-  getSortedDraggedItems
+  getSortedDraggedItems,
+  isCollectionItemCollapsed
 } from 'utils/collections/index';
 import { getRevealInFolderLabel } from 'utils/common/platform';
 import CreateExampleModal from 'components/ResponseExample/CreateExampleModal';
@@ -67,6 +68,7 @@ import MenuDropdown from 'ui/MenuDropdown';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
 import useKeybinding from 'hooks/useKeybinding';
 import useSidebarSelectionClick from 'hooks/useSidebarSelectionClick';
+import { startBlockedDragTracking } from 'utils/dragBlockedCursor';
 import { clearSidebarSelection } from 'providers/ReduxStore/slices/collections/index';
 
 const CollectionItemRow = ({
@@ -77,7 +79,8 @@ const CollectionItemRow = ({
   searchText,
   openBulkMenu,
   children,
-  isMultiDragDisabled,
+  isItemMultiDragDisabled,
+  multiDragCollections,
   multiDragItems: multiDragItemsForSelection
 }) => {
   const { dropdownContainerRef } = useSidebarAccordion();
@@ -111,7 +114,8 @@ const CollectionItemRow = ({
   const dispatch = useDispatch();
 
   const multiDragItems = isMultiSelected ? multiDragItemsForSelection : null;
-  const isDragDisabled = isMultiSelected && isMultiDragDisabled;
+  const isRedirectedToCollectionDrag = isMultiSelected && multiDragCollections?.length > 0;
+  const isDragDisabled = isMultiSelected && isItemMultiDragDisabled && !isRedirectedToCollectionDrag;
 
   // We use a single ref for drag and drop.
   const ref = useRef(null);
@@ -130,7 +134,7 @@ const CollectionItemRow = ({
   const examplesExpanded = Boolean(item.examplesExpanded);
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const hasSearchText = searchText && searchText?.trim()?.length;
-  const itemIsCollapsed = hasSearchText ? false : item.collapsed;
+  const itemIsCollapsed = hasSearchText ? false : isCollectionItemCollapsed(item);
   const isFolder = isItemAFolder(item);
 
   const isCloneable = isFolder || isItemARequest(item) || item.type === 'app';
@@ -168,13 +172,16 @@ const CollectionItemRow = ({
   const [dropType, setDropType] = useState(null); // 'above', 'inside' or 'below'
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
-    type: isDragDisabled ? 'disabled-drag' : 'collection-item',
-    item: {
-      ...item,
-      sourceCollectionUid: collectionUid,
-      wasSelected: isSelected,
-      ...(multiDragItems ? { multiSelectedItems: multiDragItems } : {})
-    },
+    type: isRedirectedToCollectionDrag ? 'collection' : 'collection-item',
+    item: isRedirectedToCollectionDrag
+      ? { ...collection, wasSelected: true, multiSelectedItems: multiDragCollections }
+      : {
+          ...item,
+          sourceCollectionUid: collectionUid,
+          wasSelected: isSelected,
+          ...(multiDragItems ? { multiSelectedItems: multiDragItems } : {})
+        },
+    canDrag: !isDragDisabled,
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     }),
@@ -290,10 +297,6 @@ const CollectionItemRow = ({
 
   const iconClassName = classnames({
     'rotate-90': !itemIsCollapsed
-  });
-
-  const examplesIconClassName = classnames({
-    'rotate-90': examplesExpanded
   });
 
   const itemRowClassName = classnames('flex collection-item-name relative items-center', {
@@ -744,6 +747,7 @@ const CollectionItemRow = ({
         tabIndex={0}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onMouseDown={isDragDisabled ? startBlockedDragTracking : undefined}
         onContextMenu={handleContextMenu}
         data-testid="sidebar-collection-item-row"
         data-selected={isSelected ? 'true' : undefined}
@@ -786,7 +790,7 @@ const CollectionItemRow = ({
                 <IconChevronRight
                   size={16}
                   strokeWidth={2}
-                  className={examplesIconClassName}
+                  className={iconClassName}
                   style={{ color: 'rgb(160 160 160)' }}
                   onClick={handleExamplesCollapse}
                   onDoubleClick={handleExamplesDoubleClick}

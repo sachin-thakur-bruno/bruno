@@ -1119,7 +1119,7 @@ export const collectionsSlice = createSlice({
       if (collection) {
         const item = findItemInCollection(collection, action.payload.itemUid);
 
-        if (item && item.type === 'folder') {
+        if (item && (item.type === 'folder' || isItemARequest(item))) {
           item.collapsed = false;
         }
       }
@@ -1130,7 +1130,7 @@ export const collectionsSlice = createSlice({
       if (collection) {
         const item = findItemInCollection(collection, action.payload.itemUid);
 
-        if (item && item.type === 'folder') {
+        if (item && (item.type === 'folder' || isItemARequest(item))) {
           item.collapsed = true;
         }
       }

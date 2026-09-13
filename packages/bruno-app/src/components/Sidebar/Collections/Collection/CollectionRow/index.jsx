@@ -57,8 +57,9 @@ import { useBetaFeature, BETA_FEATURES } from 'utils/beta-features';
 import StatusBadge from 'ui/StatusBadge';
 import CreateMockServerModal from 'components/MockServer/CreateMockServerModal';
 import useSidebarSelectionClick from 'hooks/useSidebarSelectionClick';
+import { startBlockedDragTracking } from 'utils/dragBlockedCursor';
 
-const CollectionRow = ({ collection, searchText, openBulkMenu, children, isMultiDragDisabled, multiDragCollections }) => {
+const CollectionRow = ({ collection, searchText, openBulkMenu, children, isCollectionMultiDragDisabled, multiDragCollections }) => {
   const isMockServerEnabled = useBetaFeature(BETA_FEATURES.MOCK_SERVER);
   const { dropdownContainerRef } = useSidebarAccordion();
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
@@ -94,7 +95,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isMulti
   const allCollections = useSelector((state) => state.collections.collections);
   const isMoveToWorkspaceVisible = isPathExternalToBasePath(activeWorkspace?.pathname, collection.pathname);
 
-  const isDragDisabled = isMultiSelected && isMultiDragDisabled;
+  const isDragDisabled = isMultiSelected && isCollectionMultiDragDisabled;
   const multiDragItems = isMultiSelected ? multiDragCollections : null;
 
   // Open the OpenAPI Sync tab
@@ -274,12 +275,13 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isMulti
   };
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
-    type: isDragDisabled ? 'disabled-drag' : 'collection',
+    type: 'collection',
     item: {
       ...collection,
       wasSelected: isSelected,
       ...(multiDragItems ? { multiSelectedItems: multiDragItems } : {})
     },
+    canDrag: !isDragDisabled,
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     }),
@@ -567,6 +569,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isMulti
         tabIndex={0}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onMouseDown={isDragDisabled ? startBlockedDragTracking : undefined}
         data-testid="sidebar-collection-row"
         data-selected={isSelected ? 'true' : undefined}
       >
