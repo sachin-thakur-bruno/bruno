@@ -25,7 +25,7 @@ const resolveRowObject = ({ row, itemsByUid, collectionsByUid, ghostsByPath }) =
 };
 
 const renderRow = (props) => {
-  const { row, searchText, openBulkMenu, collectionsByUid, isMultiDragDisabled, multiDragCollections, multiDragItems } = props;
+  const { row, searchText, openBulkMenu, collectionsByUid, isCollectionMultiDragDisabled, isItemMultiDragDisabled, multiDragCollections, multiDragItems } = props;
   const resolved = resolveRowObject(props);
 
   switch (row.kind) {
@@ -36,7 +36,7 @@ const renderRow = (props) => {
           collection={resolved}
           searchText={searchText}
           openBulkMenu={openBulkMenu}
-          isMultiDragDisabled={isMultiDragDisabled}
+          isCollectionMultiDragDisabled={isCollectionMultiDragDisabled}
           multiDragCollections={multiDragCollections}
         />
       );
@@ -53,7 +53,8 @@ const renderRow = (props) => {
           collectionPathname={row.collectionPathname}
           searchText={searchText}
           openBulkMenu={openBulkMenu}
-          isMultiDragDisabled={isMultiDragDisabled}
+          isItemMultiDragDisabled={isItemMultiDragDisabled}
+          multiDragCollections={multiDragCollections}
           multiDragItems={multiDragItems}
         />
       );
@@ -70,7 +71,19 @@ const renderRow = (props) => {
       const collection = collectionsByUid.get(row.collectionUid);
       const example = item?.examples?.[row.exampleIndex];
       if (!item || !collection || !example) return null;
-      return <ExampleItem example={example} item={item} collection={collection} depth={row.depth} />;
+      return (
+        <ExampleItem
+          example={example}
+          item={item}
+          collection={collection}
+          depth={row.depth}
+          searchText={searchText}
+          openBulkMenu={openBulkMenu}
+          isItemMultiDragDisabled={isItemMultiDragDisabled}
+          multiDragCollections={multiDragCollections}
+          multiDragItems={multiDragItems}
+        />
+      );
     }
     default:
       return null;
@@ -109,7 +122,8 @@ const areEqual = (prev, next) => {
     && a.collectionPathname === b.collectionPathname
     && a.exampleIndex === b.exampleIndex
     && prev.searchText === next.searchText
-    && prev.isMultiDragDisabled === next.isMultiDragDisabled
+    && prev.isCollectionMultiDragDisabled === next.isCollectionMultiDragDisabled
+    && prev.isItemMultiDragDisabled === next.isItemMultiDragDisabled
     && prev.multiDragCollections === next.multiDragCollections
     && prev.multiDragItems === next.multiDragItems
     && resolveRowObject(prev) === resolveRowObject(next)
