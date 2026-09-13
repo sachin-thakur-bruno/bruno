@@ -143,6 +143,49 @@ module.exports = runESMImports().then(() => defineConfig([
     }
   },
   {
+    // Prevent coarse Redux subscriptions. `state.collections.collections` and
+    // `state.tabs.tabs` are replaced frequently, so subscribing to either causes
+    // unnecessary re-renders when unrelated items or tabs change.
+    //
+    // Prefer narrow selectors from src/selectors/ when the value affects rendering.
+    // If the value is only needed at event time and does not affect rendering,
+    // read it from the store inside the event handler.
+    //
+    // Kept at `warn` during migration; change to `error` once existing violations
+    // have been converted.
+    files: ['packages/bruno-app/src/{components,providers,hooks}/**/*.{js,jsx,ts,tsx}'],
+    ignores: ['**/*.spec.*', '**/*.test.*'],
+    rules: {
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector:
+            'CallExpression[callee.name="useSelector"] > ArrowFunctionExpression > MemberExpression.body[property.name="collections"][object.type="MemberExpression"][object.property.name="collections"][object.object.type="Identifier"]',
+          message:
+            'Do not subscribe to state.collections.collections. Use a narrow selector from src/selectors/collections (for example, selectCollectionByUid or selectItemByUid).'
+        },
+        {
+          selector:
+            'CallExpression[callee.name="useSelector"] > ArrowFunctionExpression > MemberExpression.body[property.name="collections"][object.type="Identifier"]',
+          message:
+            'Do not subscribe to the whole state.collections slice. Select only the data the component needs from src/selectors/collections.'
+        },
+        {
+          selector:
+            'CallExpression[callee.name="useSelector"] > ArrowFunctionExpression > MemberExpression.body[property.name="tabs"][object.type="MemberExpression"][object.property.name="tabs"][object.object.type="Identifier"]',
+          message:
+            'Do not subscribe to state.tabs.tabs. Use a narrow selector such as selectTabByUid, selectActiveTab, or makeSelectTabsForCollection.'
+        },
+        {
+          selector:
+            'CallExpression[callee.name="useSelector"] > ArrowFunctionExpression > MemberExpression.body[property.name="tabs"][object.type="Identifier"]',
+          message:
+            'Do not subscribe to the whole state.tabs slice. Select only the data the component needs from src/selectors/tab.'
+        }
+      ]
+    }
+  },
+  {
     // It prevents lint errors when using CommonJS exports (module.exports) in Jest mocks.
     files: ['packages/bruno-app/src/test-utils/mocks/codemirror.js'],
     languageOptions: {
