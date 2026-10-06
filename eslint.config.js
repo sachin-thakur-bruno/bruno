@@ -303,7 +303,8 @@ module.exports = runESMImports().then(() => defineConfig([
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: './packages/bruno-requests/tsconfig.json'
+        // src/ is covered by the package tsconfig; tests/ has its own (not used by the rollup build)
+        project: ['./packages/bruno-requests/tsconfig.json', './packages/bruno-requests/tests/tsconfig.json']
       }
     },
     rules: {
