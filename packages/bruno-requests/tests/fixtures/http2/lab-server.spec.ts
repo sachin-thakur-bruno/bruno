@@ -3,6 +3,7 @@
  * h2 / h1-only / mTLS behave as labelled, and close() releases all handles. The real http2 transport
  * tests (Phase 1+) build on this.
  */
+import http from 'node:http';
 import http2 from 'node:http2';
 import https from 'node:https';
 import { startLab, type Lab } from './lab-server';
@@ -11,10 +12,10 @@ let lab: Lab;
 beforeAll(async () => { lab = await startLab(); });
 afterAll(async () => { await lab.close(); });
 
-/** GET over a raw Node http2 session; returns { status, body }. */
-const h2Get = (port: number, path: string, extraTls: Record<string, unknown> = {}) =>
+/** GET over a raw Node http2 session (TLS, or cleartext h2c when `scheme` is http); returns { status, body }. */
+const h2Get = (port: number, path: string, extraTls: Record<string, unknown> = {}, scheme: 'https' | 'http' = 'https') =>
   new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const session = http2.connect(`https://localhost:${port}`, { ca: lab.certs.ca, ...extraTls });
+    const session = http2.connect(`${scheme}://localhost:${port}`, scheme === 'https' ? { ca: lab.certs.ca, ...extraTls } : {});
     // A rejected handshake may surface as 'error' OR as a silent 'close'; settle once on whichever comes first.
     let settled = false;
     const fail = (e: Error) => {
@@ -38,6 +39,17 @@ const h2Get = (port: number, path: string, extraTls: Record<string, unknown> = {
 const h1Get = (port: number, path: string) =>
   new Promise<{ status: number; body: any }>((resolve, reject) => {
     https.get({ host: 'localhost', port, path, ca: lab.certs.ca }, (res) => {
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => resolve({ status: res.statusCode || 0, body: JSON.parse(data) }));
+    }).on('error', reject);
+  });
+
+/** GET over plain cleartext http (HTTP/1.1). */
+const h1PlainGet = (port: number, path: string) =>
+  new Promise<{ status: number; body: any }>((resolve, reject) => {
+    http.get({ host: 'localhost', port, path }, (res) => {
       let data = '';
       res.setEncoding('utf8');
       res.on('data', (c) => { data += c; });
@@ -82,5 +94,17 @@ describe('lab fixture', () => {
     const r = await h2Get(lab.ports.h2, '/echo');
     expect(typeof r.body.sessions).toBe('number');
     expect(r.body.sessions).toBeGreaterThan(0);
+  });
+
+  test('h2c server speaks cleartext HTTP/2 with prior knowledge', async () => {
+    const r = await h2Get(lab.ports.h2c, '/echo', {}, 'http');
+    expect(r.status).toBe(200);
+    expect(r.body.httpVersion).toBe('2.0');
+  });
+
+  test('plain h1 server is cleartext HTTP/1.1 and rejects an h2 preface', async () => {
+    const r = await h1PlainGet(lab.ports.h1Plain, '/echo');
+    expect(r.body.httpVersion).toBe('1.1');
+    await expect(h2Get(lab.ports.h1Plain, '/echo', {}, 'http')).rejects.toThrow();
   });
 });
