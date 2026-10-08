@@ -1,0 +1,97 @@
+import * as http2wrapper from 'http2-wrapper';
+import { SocksClient, type SocksProxy } from 'socks';
+import type { ClientHttp2Session } from 'node:http2';
+import type { LookupFunction } from 'node:net';
+import { pickTlsFields } from './tls-options';
+import { withSocketGuard } from './socket-guard';
+
+type ProxyKind = 'http' | 'https' | 'socks';
+
+export type ProxyInfo = {
+  kind: ProxyKind;
+  url: string;
+  key: string;
+  proxyTls?: Record<string, unknown> | null;
+};
+
+type ProxyStreamResult = [stream: unknown, statusCode: number, statusMessage: string];
+type ProxyAgentInternals = { proxyOptions: { url: URL } };
+
+/**
+ * The base (Http2OverHttp) does the tunnel wrapping, the TLS-to-target and the pooling.
+ * we only replace how the tunnel is opened, a SOCKS CONNECT instead of an
+ * HTTP CONNECT.
+ */
+class Http2OverSocksBase extends http2wrapper.proxies.Http2OverHttp {
+  async _getProxyStream(authority: string): Promise<ProxyStreamResult> {
+    const { url } = (this as unknown as ProxyAgentInternals).proxyOptions;
+    const lastColon = authority.lastIndexOf(':');
+    const host = authority.slice(0, lastColon);
+    const port = Number(authority.slice(lastColon + 1));
+
+    const proxy: SocksProxy = {
+      host: url.hostname,
+      port: Number(url.port),
+      type: url.protocol === 'socks4:' ? 4 : 5
+    };
+    if (url.username) {
+      proxy.userId = decodeURIComponent(url.username);
+      proxy.password = decodeURIComponent(url.password || '');
+    }
+
+    const info = await SocksClient.createConnection({ proxy, command: 'connect', destination: { host, port } });
+    return [info.socket, 200, 'OK'];
+  }
+}
+
+const Http2OverHttp = withSocketGuard(http2wrapper.proxies.Http2OverHttp);
+const Http2OverHttps = withSocketGuard(http2wrapper.proxies.Http2OverHttps);
+const Http2OverSocks = withSocketGuard(Http2OverSocksBase);
+
+/** One pooled Agent per proxy, keyed by ProxyInfo.key. */
+const proxyAgents = new Map<string, InstanceType<typeof http2wrapper.Agent>>();
+
+const buildProxyAgent = (info: ProxyInfo): InstanceType<typeof http2wrapper.Agent> => {
+  const proxyOptions: http2wrapper.ProxyOptions = { url: info.url };
+  if (info.kind === 'socks') {
+    return new Http2OverSocks({ proxyOptions });
+  }
+  if (info.kind === 'https') {
+    // The connection to the proxy is itself TLS; forward the proxy's TLS fields so its cert is verified.
+    Object.assign(proxyOptions, pickTlsFields(info.proxyTls));
+    return new Http2OverHttps({ proxyOptions });
+  }
+  return new Http2OverHttp({ proxyOptions });
+};
+
+export type AcquireH2SessionViaProxyParams = {
+  origin: string;
+  proxyInfo: ProxyInfo;
+  tlsOptions?: Record<string, unknown> | null;
+  lookup?: LookupFunction;
+};
+
+export function acquireH2SessionViaProxy(params: AcquireH2SessionViaProxyParams): Promise<ClientHttp2Session> {
+  const { origin, proxyInfo, tlsOptions, lookup } = params;
+  let agent = proxyAgents.get(proxyInfo.key);
+  if (!agent) {
+    agent = buildProxyAgent(proxyInfo);
+    proxyAgents.set(proxyInfo.key, agent);
+  }
+  return agent.getSession(origin, {
+    ...pickTlsFields(tlsOptions),
+    ...(lookup ? { lookup } : {})
+  });
+}
+
+/** Destroy every pooled proxy Agent (app quit, CLI run end, HTTP version preference change). */
+export function closeAllProxyAgents(): void {
+  for (const agent of proxyAgents.values()) {
+    try {
+      agent.destroy();
+    } catch {
+      /* already gone */
+    }
+  }
+  proxyAgents.clear();
+}

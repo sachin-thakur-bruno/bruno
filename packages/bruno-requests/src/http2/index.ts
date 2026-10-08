@@ -24,5 +24,8 @@ export type { BuildH2HeadersParams, HeaderValue } from './headers';
 export { createHttp2Transport } from './transport';
 export type { Http2Transport, Http2TransportRequestOptions } from './transport';
 
+export { acquireH2SessionViaProxy, closeAllProxyAgents } from './proxy';
+export type { ProxyInfo, AcquireH2SessionViaProxyParams } from './proxy';
+
 export { pickTlsFields, TLS_FIELDS } from './tls-options';
 export type { TlsOptions } from './tls-options';
