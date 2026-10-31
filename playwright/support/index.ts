@@ -1,11 +1,11 @@
 /**
  * Infrastructure utilities: CLI runner, waits, session snapshot helpers, stubs, file helpers.
  *
- * Temporary bridge: re-exports tests/utils/* until the code moves here.
+ * Barrel for infrastructure utilities.
  */
-export * from '../../tests/utils/cli';
-export * from '../../tests/utils/wait';
-export * from '../../tests/utils/snapshot';
-export * from '../../tests/utils/stubs';
+export * from './cli';
+export * from './wait';
+export * from './snapshot';
+export * from './stubs';
 export * from './helpers';
-export * from '../../tests/utils/workspace';
+export * from './workspace';

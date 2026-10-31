@@ -1,9 +1,34 @@
 /**
- * Page objects: the only page-object entry point specs import.
+ * Single entry point for page objects used by specs.
  *
- * Temporary bridge: re-exports the current page layer in tests/utils/page.
- * As each region moves into playwright/pages/, export it from here instead.
+ * Temporarily re-exports the legacy page layer from tests/utils/page,
+ * along with page objects missing from its barrel. Once migration is
+ * complete, only local page objects will be exported.
+ *
+ * TODO: Export environment/environment.ts after resolving its
+ * openEnvironmentSelector conflict with actions.ts.
  */
+
 export * from '../../tests/utils/page';
-export * from '../../tests/utils/page/openapi/render-spec';
+export * from './api-spec';
 export * from './response-example';
+export * from './request-tabs';
+export * from './response-timeline';
+export * from './app-shell/title-bar';
+export * from './app-shell/devtools';
+export * from './app-shell/network-log';
+export * from './app-shell/toast';
+export * from './collection/header';
+export * from './collection/docs';
+export * from './collection/proxy';
+export * from './components/code-editor';
+export * from './components/modal';
+export * from './components/dropdown';
+export * from './components/pane-tabs';
+export * from './variable/secret-form';
+export * from './workspace/create-workspace-modal';
+export * from './workspace/import-workspace';
+export * from './workspace/manage-workspace';
+export * from './workspace/remove-workspace-modal';
+export * from './workspace/rename-workspace-modal';
+export * from './workspace/workspace-overview';
