@@ -11,14 +11,16 @@ import {
 import { AUTH_MODE_LABELS } from '../constants';
 import { buildCommonLocators } from '../page/locators';
 import { buildQueryParamsLocators } from './params/query';
+import { buildRequestSendLocators } from '../../../playwright/pages/request/send';
+import { buildNewRequestModalLocators } from '../../../playwright/pages/sidebar/item-actions';
 
 export const buildRequestLocators = (page: Page) => ({
   urlInput: () => page.getByTestId('request-url').locator('.CodeMirror'),
   urlLine: () => page.getByTestId('request-url').locator('.CodeMirror-line'),
-  sendButton: () => page.getByTestId('send-arrow-icon'),
+  sendButton: () => buildRequestSendLocators(page).sendButton(),
   methodDropdown: () => page.getByTestId('method-selector'),
   newRequestUrl: () => page.getByTestId('new-request-url').locator('.CodeMirror'),
-  requestNameInput: () => page.getByPlaceholder('Request Name'),
+  requestNameInput: () => buildNewRequestModalLocators(page).requestNameInput(),
   requestTestId: () => page.getByTestId('request-name'),
   generateCodeButton: () => page.getByTestId('generate-code-button'),
   bodyModeSelector: () => page.getByTestId('request-body-mode-selector'),

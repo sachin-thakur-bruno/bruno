@@ -11,7 +11,7 @@ import { buildSidebarLocators } from './sidebar';
 import { buildDocsLocators } from './docs';
 import { buildMigrateToYmlLocators } from './collection/migrate-to-yml';
 import { buildWebsocketCommonLocators } from './websocket';
-import { buildToastLocators } from './toast';
+import { buildToastLocators } from '../../../playwright/pages/app-shell/toast';
 import { buildSecretVariableFormLocators } from './secret-variable-form';
 import { buildRequestLocators } from '../request';
 import { buildCollectionHeaderLocators } from './collection/collection-header';
@@ -27,9 +27,15 @@ import { buildManageWorkspaceLocators } from './workspace/manage-workspace';
 import { buildCreateWorkspaceModalLocators } from './workspace/create-workspace-modal';
 import { buildTitleBarLocators } from './title-bar';
 import { buildCloneGitRepositoryLocators } from './git/clone-git-repository';
-import { buildResponseExampleLocators } from './response-example';
+import { buildResponseExampleLocators } from '../../../playwright/pages/response-example';
 import { buildGraphqlQueryBuilderLocators } from './graphql/query-builder';
 import { buildAuthLocators } from './auth';
+import { buildModalLocators } from '../../../playwright/pages/components/modal';
+import { buildDropdownLocators } from '../../../playwright/pages/components/dropdown';
+import { buildFolderLocators } from '../../../playwright/pages/sidebar/collection-tree';
+import { buildItemActionLocators } from '../../../playwright/pages/sidebar/item-actions';
+import { buildResponseLocators } from '../../../playwright/pages/response';
+import { buildRequestTabsLocators } from '../../../playwright/pages/request-tabs';
 
 export type PresetRequestType = 'http' | 'graphql' | 'grpc' | 'ws';
 
@@ -72,36 +78,9 @@ export const buildCommonLocators = (page: Page) => ({
   migrateToYml: buildMigrateToYmlLocators(page),
   environment: buildEnvironmentLocators(page),
   variablesTab: buildVariablesTabLocators(page),
-  actions: {
-    collectionActions: (collectionName: string) =>
-      page.getByTestId('collections').locator('.collection-name')
-        .filter({ hasText: collectionName })
-        .locator('.collection-actions .icon'),
-    collectionItemActions: (itemName: string) =>
-      page.locator('.collection-item-name')
-        .filter({ hasText: itemName })
-        .locator('.menu-icon')
-  },
-  dropdown: {
-    item: (text: string) => page.locator('.dropdown-item').filter({ hasText: text }),
-    tippyItem: (text: string) => page.locator('.tippy-box .dropdown-item').filter({ hasText: text })
-  },
-  tabs: {
-    allRequestTabs: () => page.locator('.request-tab'),
-    requestTab: (requestName: string) => page.locator('.request-tab .tab-label').filter({ hasText: requestName }),
-    folderTab: (folderName: string) => page.locator('.request-tab .tab-label').filter({ hasText: folderName }),
-    collectionSettingsTab: () =>
-      page.locator('.request-tab').filter({ has: page.locator('.tab-label', { hasText: 'Collection' }) }),
-    activeRequestTab: () => page.locator('.request-tab.active'),
-    leftChevron: () => page.getByLabel('Left Chevron'),
-    scrollContainer: () => page.locator('.tabs-scroll-container'),
-    activeRequestTabMethod: () => page.locator('.request-tab.active .tab-method'),
-    closeTab: (requestName: string) => page.locator('.request-tab').filter({ hasText: requestName }).getByTestId('request-tab-close-icon'),
-    closableTabs: () => page.locator('.request-tab').filter({ has: page.getByTestId('request-tab-close-icon') }),
-    closeTabIcon: (tab: Locator) => tab.getByTestId('request-tab-close-icon'),
-    draftIndicator: () => page.locator('.request-tab.active .has-changes-icon'),
-    tabDraftIndicator: (tab: Locator) => tab.locator('.has-changes-icon')
-  },
+  actions: buildItemActionLocators(page),
+  dropdown: buildDropdownLocators(page),
+  tabs: buildRequestTabsLocators(page),
   paneTabs: {
     responsiveTab: (key: string) => page.getByTestId(`responsive-tab-${key}`),
     // request and response may have more tabs, pass the pane to isolate further.
@@ -126,27 +105,8 @@ export const buildCommonLocators = (page: Page) => ({
     settingsTabBarTrigger: (scriptType: string) =>
       page.getByTestId('settings-tab-bar').getByTestId(`ai-assist-trigger-${scriptType}`)
   },
-  folder: {
-    chevron: (folderName: string) => page.locator('.collection-item-name').filter({ hasText: folderName }).getByTestId('folder-chevron')
-  },
-  modal: {
-    any: () => page.locator('.bruno-modal'),
-    formError: (text: string | RegExp) =>
-      page.locator('.bruno-modal [data-testid="form-error"]').getByText(text),
-    tabOptions: () => page.locator('.bruno-modal-header-tabs').locator('.bruno-modal-header-tab'),
-    title: (title: string) => page.locator('.bruno-modal-header-title').filter({ hasText: title }),
-    byTitle: (title: string) => page.locator('.bruno-modal').filter({ has: page.locator('.bruno-modal-header-title').filter({ hasText: title }) }),
-    itemNameInput: (root?: Locator) => (root ?? page.locator('.bruno-modal')).locator('#collection-item-name'),
-    button: (name: string) => page.locator('.bruno-modal').getByRole('button', { name: name, exact: true }),
-    closeButton: () => page.locator('.bruno-modal').getByTestId('modal-close-button'),
-    card: () => page.locator('.bruno-modal-card'),
-    footer: () => page.locator('.bruno-modal-footer'),
-    submitButton: () => page.locator('.bruno-modal-footer .submit'),
-    newRequestMethodOption: (id: string) => page.getByTestId(`method-selector-${id.toLowerCase()}`),
-    newRequestVariableToken: (name: string) =>
-      page.getByTestId('new-request-url').locator('.cm-variable-valid').filter({ hasText: name }).first(),
-    backdrop: () => page.locator('.bruno-modal-backdrop')
-  },
+  folder: buildFolderLocators(page),
+  modal: buildModalLocators(page),
   openCollectionPicker: {
     list: () => page.getByTestId('selection-list'),
     titles: () => page.getByTestId('selection-list').locator('.selection-item-title'),
@@ -272,45 +232,7 @@ export const buildCommonLocators = (page: Page) => ({
   runnerResults: {
     itemPath: (name: string) => page.getByTestId('runner-result-item').filter({ hasText: name })
   },
-  response: {
-    statusCode: () => page.getByTestId('response-status-code'),
-    status: () => page.getByTestId('response-pane-status'),
-    elapsedTime: () => page.getByTestId('response-elapsed-time'),
-    time: () => page.getByTestId('response-pane-status').getByTestId('response-time'),
-    // Rendered by every response pane (http, grpc, ws) only while a response exists, so its
-    // absence doubles as the "response is cleared" signal.
-    clearButton: () => page.getByTestId('response-clear-btn'),
-    cancelRequestButton: () => page.getByRole('button', { name: 'Cancel Request' }),
-    pane: () => page.locator('.response-pane'),
-    errorMessage: () => page.getByTestId('response-pane').locator('.error'),
-    copyButton: () => page.locator('button[title="Copy response to clipboard"]'),
-    body: () => page.locator('.response-pane'),
-    tabContent: () => page.getByTestId('response-tab-content'),
-    editorContainer: () => page.locator('.response-pane .editor-container'),
-    formatTab: () => page.getByTestId('format-response-tab'),
-    formatTabDropdown: () => page.getByTestId('format-response-tab-dropdown'),
-    previewContainer: () => page.getByTestId('response-preview-container'),
-    previewContainerCodeMirror: () => page.getByTestId('response-preview-container').locator('.CodeMirror').first(),
-    codeLine: () => page.locator('.response-pane .editor-container .CodeMirror-line'),
-    jsonTreeLine: () => page.locator('.response-pane .object-content'),
-    xmlTree: () => page.getByTestId('xml-tree'),
-    // Only the XML tree's expand/collapse buttons carry aria-expanded, so this matches
-    // every still-collapsed node regardless of depth.
-    xmlCollapsedNodeToggles: () => page.getByTestId('xml-tree').locator('button[aria-expanded="false"]'),
-    previewErrorBanner: () => page.getByTestId('response-preview-container').getByTestId('error-banner'),
-    tabsOverflowButton: () => page.getByTestId('response-pane').getByTestId('responsive-tabs-more'),
-    tabsOverflowItem: (tabName: string) => page.locator('.tippy-box .dropdown-item').filter({ hasText: tabName }),
-    testSummary: (section: 'preRequest' | 'postResponse' | 'tests' = 'tests') =>
-      page.getByTestId(`test-summary-${section}`),
-    // Match the fail icon (one per row) rather than a class shared by both the icon and
-    // label spans, so each failure counts once, not twice.
-    testFailures: () => page.getByTestId('test-result-item').filter({ has: page.getByTestId('test-result-icon-fail') }),
-    assertionResults: {
-      rows: () => page.getByTestId('test-result-item'),
-      passed: () => page.getByTestId('test-result-item').filter({ has: page.getByTestId('test-result-icon-pass') }),
-      failed: () => page.getByTestId('test-result-item').filter({ has: page.getByTestId('test-result-icon-fail') })
-    }
-  },
+  response: buildResponseLocators(page),
   timeline: {
     items: () => page.getByTestId('timeline-item'),
     lastItem: () => page.getByTestId('timeline-item').last(),
@@ -500,51 +422,7 @@ export const buildGrpcCommonLocators = (page: Page) => ({
   }
 });
 
-/**
- * Builds locators for the response errors card
- * @param page - The Playwright page object
- * @returns Object with locators for the response errors card elements
- */
-export const buildResponseErrorsLocators = (page: Page) => ({
-  /** The response errors card */
-  card: () => page.getByTestId('response-errors-card'),
-  /** Card title: the error title for one error, "N errors" for several */
-  title: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-title'),
-  closeButton: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-close'),
-  fullPaneToggle: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-full-pane-toggle'),
-  /** Expand all / collapse all, shown for several errors */
-  toggleAll: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-toggle-all'),
-  /** Copy button in the header for one error, or within a row */
-  copyButton: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-copy'),
-  /** Scrollable body holding the detail or the rows */
-  body: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-body'),
-  /** All error rows, shown for several errors */
-  rows: () => page.getByTestId('response-errors-row'),
-  /** Nth error row (0-indexed) */
-  row: (index: number) => page.getByTestId('response-errors-row').nth(index),
-  /** Button that opens and closes a row */
-  rowToggle: (row: Locator) => row.getByTestId('response-errors-row-toggle'),
-  /** One-line message preview of a collapsed row */
-  rowPreview: (row: Locator) => row.getByTestId('response-errors-row-preview'),
-  /** Source label within an error detail */
-  sourceLabel: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-source-label'),
-  /** File path link within an error detail */
-  filePath: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-file-path'),
-  /** Error message within an error detail */
-  message: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-message'),
-  /** Code snippet within an error detail */
-  codeSnippet: (scope?: Locator) => (scope ?? page).getByTestId('code-snippet'),
-  /** Error-highlighted code line within an error detail */
-  errorLine: (scope?: Locator) => (scope ?? page).getByTestId('code-line-error'),
-  /** Stack trace toggle within an error detail */
-  stackTraceToggle: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-stack-trace-toggle'),
-  /** Stack trace content within an error detail */
-  stackTrace: (scope?: Locator) => (scope ?? page).getByTestId('response-errors-stack-trace'),
-  /** Tab-bar icon shown while the card is closed */
-  errorIcon: () => page.getByTestId('response-errors-icon'),
-  /** Error count badge on the tab-bar icon */
-  iconCount: () => page.getByTestId('response-errors-icon-count')
-});
+export { buildResponseErrorsLocators } from '../../../playwright/pages/response';
 
 /**
  * Builds locators for sandbox mode settings
