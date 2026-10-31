@@ -9,8 +9,17 @@ import { buildPreferencesLocators, openPreferences, selectPreferencesTab } from 
 import { revealCollectionsTop, revealFolderRow } from './sidebar';
 import { switchResponseFormat, switchToPreviewTab, switchToEditorTab, expandAllXmlNodes, getResponseBody, selectResponsePaneTab, selectResponsePaneTabViaOverflow, expectResponseContains, clickResponseAction, resetResponse } from '../../../playwright/pages/response';
 import { sendRequest, sendRequestAndWaitForResponse, sendAndWaitForErrorCard, sendAndWaitForResponse } from '../../../playwright/pages/request/send';
-import { selectPaneTab } from '../../../playwright/pages/components/pane-tabs';
 import { createExampleFromSidebar } from '../../../playwright/pages/response-example';
+import { selectRequestPaneTab, openRequestPaneTabOverflow, requestPaneOverflowTabItem, saveRequest, fillRequestUrl, setRequestUrlAndSave } from '../../../playwright/pages/request/pane';
+import { selectRequestBodyMode, readRequestBody, setTextBody, mockBrowseFiles, addMultipartFileToLastRow, removeFirstMultipartFile } from '../../../playwright/pages/request/body';
+import { addAssertion, editAssertion, deleteAssertion } from '../../../playwright/pages/request/assertions';
+import { selectScriptSubTab, addPreRequestScript, addPostResponseScript, writeScriptContent, readScriptContent, addTestScript } from '../../../playwright/pages/request/script';
+import { selectAuthMode } from '../../../playwright/pages/request/auth';
+import { expectRequestMaxRedirects } from '../../../playwright/pages/request/settings';
+import { editCodeMirrorEditor, setCodeMirrorEditorValue, setCodeMirrorValue } from '../../../playwright/pages/components/code-editor';
+import { fieldEditor, typeIntoField, writeFieldValue, readField } from '../../../playwright/pages/components/single-line-editor';
+import { createUntitledRequest, createTransientRequest, createTransientRequestFromPreset, createRequest, saveTransientRequestAs } from '../../../playwright/pages/request/create';
+import { addGrpcMessage, generateGrpcSampleMessage, sendGrpcRequest, streamGrpcMessagesAndEndCall } from '../../../playwright/pages/request/grpc';
 
 type SandboxMode = 'safe' | 'developer';
 
@@ -233,136 +242,6 @@ const createCollection = async (
   });
 };
 
-const STANDARD_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD', 'TRACE', 'CONNECT'];
-
-type CreateRequestOptions = {
-  url?: string;
-  method?: string;
-  inFolder?: boolean;
-  requestType?: 'http' | 'graphql' | 'ws' | 'grpc';
-};
-
-type CreateUntitledRequestOptions = {
-  requestType?: 'HTTP' | 'GraphQL' | 'WebSocket' | 'gRPC';
-  requestName?: string;
-  url?: string;
-  tag?: string;
-};
-
-/**
- * Create an untitled request using the new dropdown flow (from tabs area)
- * @param page - The page object
- * @param options - Optional settings (requestType, url, tag)
- * @returns void
- */
-const createUntitledRequest = async (
-  page: Page,
-  options: CreateUntitledRequestOptions = {}
-) => {
-  const { requestType = 'HTTP', url, tag } = options;
-
-  await test.step(`Create untitled ${requestType} request${url ? ' with URL' : ''}${tag ? ' with tag' : ''}`, async () => {
-    // Click the + icon to open the dropdown
-    const createButton = page.locator('.short-tab').locator('svg').first();
-    await createButton.waitFor({ state: 'visible' });
-    await createButton.click();
-
-    // Select the request type from dropdown
-    await page.locator('.tippy-box .dropdown-item').filter({ hasText: requestType }).waitFor({ state: 'visible' });
-    await page.locator('.tippy-box .dropdown-item').filter({ hasText: requestType }).click();
-
-    // Wait for the request tab to be active
-    await page.locator('.request-tab.active').waitFor({ state: 'visible' });
-    await page.waitForTimeout(300);
-
-    // Fill URL if provided
-    if (url) {
-      await page.locator('#request-url .CodeMirror').click();
-      await page.locator('#request-url textarea').fill(url);
-      await page.locator('#request-actions').getByTestId('save-request-button').click();
-      await page.waitForTimeout(200);
-    }
-
-    // Add tag if provided
-    if (tag) {
-      await selectRequestPaneTab(page, 'Settings');
-      await page.waitForTimeout(200);
-      const tagInput = await page.getByTestId('tag-input').getByRole('textbox');
-      await tagInput.fill(tag);
-      await tagInput.press('Enter');
-      await page.waitForTimeout(200);
-      await expect(page.locator('.tag-item', { hasText: tag })).toBeVisible();
-      const saveShortcut = process.platform === 'darwin' ? 'Meta+s' : 'Control+s';
-      await page.keyboard.press(saveShortcut);
-      await page.waitForTimeout(200);
-    }
-
-    // Wait for toast message to ensure request creation is complete
-    // This helps prevent race conditions when creating multiple requests
-    await expect(page.getByText('New request created!')).toBeVisible({ timeout: 2000 }).catch(() => {
-      // Toast might have already disappeared, that's okay
-    });
-  });
-};
-
-type CreateTransientRequestOptions = {
-  requestType?: 'HTTP' | 'GraphQL' | 'gRPC' | 'WebSocket';
-};
-
-/**
- * Create a transient request using the + icon button in the tabs area
- * Based on the CreateTransientRequest component behavior
- * @param page - The page object
- * @param options - Optional settings (requestType)
- * @returns void
- */
-const createTransientRequest = async (
-  page: Page,
-  options: CreateTransientRequestOptions = {}
-) => {
-  const { requestType = 'HTTP' } = options;
-
-  await test.step(`Create transient ${requestType} request`, async () => {
-    // Find the + icon button (ActionIcon with aria-label="New Transient Request")
-    const createButton = page.getByRole('button', { name: 'New Transient Request' });
-    await createButton.waitFor({ state: 'visible', timeout: 5000 });
-
-    // Click the + icon to open the dropdown
-    await createButton.click({
-      button: 'right'
-    });
-
-    // Wait for dropdown to be visible
-    await page.locator('.dropdown-item').first().waitFor({ state: 'visible' });
-
-    // Select the request type from dropdown
-    // The dropdown items have both icon and label, we match by the label text
-    await page.locator('.dropdown-item').filter({ hasText: requestType }).click();
-
-    // Wait for the request tab to be active (transient requests show as "Untitled X")
-    await page.locator('.request-tab.active').waitFor({ state: 'visible' });
-    await expect(page.locator('.request-tab.active')).toContainText('Untitled');
-    await page.waitForTimeout(300);
-  });
-};
-
-/**
- * Create a transient request by left-clicking the + icon, which uses the
- * collection's default request type preset instead of the dropdown
- * @param page - The page object
- * @returns void
- */
-const createTransientRequestFromPreset = async (page: Page) => {
-  await test.step('Create transient request from the collection preset', async () => {
-    const createButton = page.getByRole('button', { name: 'New Transient Request' });
-    await createButton.waitFor({ state: 'visible', timeout: 5000 });
-    await createButton.click();
-
-    const activeTab = buildCommonLocators(page).tabs.activeRequestTab();
-    await expect(activeTab).toContainText('Untitled');
-  });
-};
-
 /**
  * Set the collection's default request type preset and save it
  * @param page - The page object
@@ -407,113 +286,6 @@ const setRequestUrlPreset = async (page: Page, collectionName: string, requestUr
     await locators.presets.saveBtn().click();
 
     await locators.tabs.tabDraftIndicator(locators.tabs.collectionSettingsTab()).waitFor({ state: 'hidden' });
-  });
-};
-
-/**
- * Fill the URL field in the currently active request
- * Works with HTTP, GraphQL, gRPC, and WebSocket requests
- * @param page - The page object
- * @param url - The URL to fill
- * @param options - `replace: true` overwrites the existing URL; by default the text is inserted at the cursor
- * @returns void
- */
-const fillRequestUrl = async (page: Page, url: string, { replace = false } = {}) => {
-  await test.step(`Fill request URL: ${url}`, async () => {
-    // HTTP/GraphQL requests use #request-url
-    // gRPC/WebSocket don't have a specific ID, so we need to find the CodeMirror in the active request pane
-    const httpGraphqlUrl = page.locator('#request-url .CodeMirror');
-    const grpcWsUrl = page.locator('.input-container .CodeMirror').first();
-
-    // Try HTTP/GraphQL selector first
-    const isHttpOrGraphql = await httpGraphqlUrl.isVisible().catch(() => false);
-    const selectAll = () => page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
-
-    if (isHttpOrGraphql) {
-      await httpGraphqlUrl.click();
-      if (replace) await selectAll();
-      await page.locator('#request-url textarea').fill(url);
-    } else {
-      // Fall back to generic selector for gRPC/WebSocket
-      await grpcWsUrl.click();
-      if (replace) await selectAll();
-      await page.locator('.input-container textarea').first().fill(url);
-    }
-
-    await page.waitForTimeout(200);
-  });
-};
-
-/**
- * Create a request in a collection or folder
- * @param page - The page object
- * @param requestName - The name of the request to create
- * @param parentName - The name of the collection or folder
- * @param options - Optional settings (url, inFolder)
- * @returns void
- */
-const createRequest = async (
-  page: Page,
-  requestName: string,
-  parentName: string,
-  options: CreateRequestOptions = {}
-) => {
-  const { url, method, inFolder = false, requestType = 'http' } = options;
-  const parentType = inFolder ? 'folder' : 'collection';
-  const hasMethodSelector = requestType === 'http' || requestType === 'graphql';
-
-  await test.step(`Create ${requestType.toUpperCase()} request "${requestName}" in ${parentType} "${parentName}"`, async () => {
-    const locators = buildCommonLocators(page);
-
-    if (inFolder) {
-      await locators.sidebar.folder(parentName).hover();
-      await locators.actions.collectionItemActions(parentName).click();
-    } else {
-      const collectionRow = locators.sidebar.collection(parentName);
-      const collectionAction = locators.actions.collectionActions(parentName);
-      // Re-hover on each poll: CSS `:hover` reveals `.collection-actions`, but sidebar
-      // re-renders (e.g. workspace snapshot hydration) can shift the row out from under a one-shot hover().
-      await expect(async () => {
-        await collectionRow.hover();
-        await expect(collectionAction).toBeVisible({ timeout: 1000 });
-      }).toPass({ timeout: 10000 });
-      await collectionAction.click();
-    }
-
-    await locators.dropdown.item('New Request').click();
-
-    // The modal defaults to HTTP; switch the radio for the other three types.
-    if (requestType !== 'http') {
-      await page.getByTestId(`${requestType}-request`).click();
-    }
-
-    await page.getByPlaceholder('Request Name').fill(requestName);
-
-    if (method && hasMethodSelector) {
-      await page.locator('.bruno-modal .method-selector').click();
-      const isStandardMethod = STANDARD_HTTP_METHODS.includes(method.toUpperCase());
-      if (isStandardMethod) {
-        await locators.modal.newRequestMethodOption(method).click();
-      } else {
-        await locators.modal.newRequestMethodOption('add-custom').click();
-        await page.locator('.bruno-modal .method-selector input').fill(method);
-        await page.keyboard.press('Enter');
-      }
-      await page.waitForTimeout(200);
-    }
-
-    if (url) {
-      await page.locator('#new-request-url .CodeMirror').click();
-      await page.keyboard.type(url);
-    }
-
-    await locators.modal.button('Create').click();
-
-    if (inFolder) {
-      await expect(locators.sidebar.folderRequest(parentName, requestName)).toBeVisible();
-    } else {
-      await expect(locators.sidebar.request(requestName)).toBeVisible();
-    }
   });
 };
 
@@ -1481,259 +1253,6 @@ const focusCollectionSettingsTab = async (page: Page, { timeout = 10000 } = {}) 
   });
 };
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const selectRequestPaneTab = async (page: Page, tabName: string) => {
-  await selectPaneTab(page, '[data-testid="request-pane"] > .px-4', tabName);
-};
-
-/**
- * Open a sidebar request's Settings tab and assert its Max Redirects value, as rendered.
- * `expected` is the on-screen text, so a large ceiling is its serialized form (e.g. '1e+31').
- */
-const expectRequestMaxRedirects = async (page: Page, requestName: string, expected: string) => {
-  await test.step(`Expect ${requestName} to show a max redirects of ${expected}`, async () => {
-    const locators = buildCommonLocators(page);
-    await locators.sidebar.request(requestName).click();
-    await selectRequestPaneTab(page, 'Settings');
-    await expect(locators.requestSettings.maxRedirectsInput()).toHaveValue(expected);
-  });
-};
-
-const selectRequestBodyMode = async (page: Page, mode: string) => {
-  await test.step(`Select request body mode "${mode}"`, async () => {
-    await selectRequestPaneTab(page, 'Body');
-    const locators = buildCommonLocators(page);
-    await locators.request.bodyModeSelector().click();
-    await locators.dropdown.item(mode).click();
-  });
-};
-
-const mockBrowseFiles = async (electronApp: ElectronApplication, filePaths: string[]) => {
-  await electronApp.evaluate(({ dialog }, selectedPaths: string[]) => {
-    const originalShowOpenDialog = dialog.showOpenDialog;
-    dialog.showOpenDialog = async (...args) => {
-      dialog.showOpenDialog = originalShowOpenDialog;
-      return {
-        canceled: false,
-        filePaths: selectedPaths
-      };
-    };
-  }, filePaths);
-};
-
-const addMultipartFileToLastRow = async (page: Page, electronApp: ElectronApplication, filePath: string) => {
-  await test.step(`Add multipart file "${path.basename(filePath)}"`, async () => {
-    await mockBrowseFiles(electronApp, [filePath]);
-
-    const table = buildCommonLocators(page).table('multipart-form-table');
-    // The last row is the empty "add" row. Capture its index now, because once
-    // we set a file the table appends a new empty row — so `.last()` would jump
-    // to that new row instead of staying on the one we just filled.
-    let rowIndex = (await table.allRows().count()) - 1;
-    const targetRow = table.allRows().nth(rowIndex);
-
-    if (rowIndex < 0) {
-      rowIndex = 0;
-    }
-
-    await expect(targetRow.getByTestId('multipart-file-upload')).toBeVisible();
-    await targetRow.getByTestId('multipart-file-upload').click();
-    const specificRow = table.allRows().nth(rowIndex);
-    await expect(specificRow.locator('.file-value-cell')).toBeVisible({ timeout: 10000 });
-    const inlineChip = specificRow.getByTestId('multipart-file-chip').filter({ hasText: path.basename(filePath) });
-    const summary = specificRow.getByTestId('multipart-file-summary');
-    await expect(inlineChip.or(summary)).toBeVisible();
-  });
-};
-
-const removeFirstMultipartFile = async (page: Page) => {
-  await test.step('Remove first multipart file', async () => {
-    const table = buildCommonLocators(page).table('multipart-form-table');
-    const firstRow = table.allRows().first();
-    await expect(firstRow.locator('.file-value-cell')).toBeVisible();
-
-    const inlineRemove = firstRow.getByTestId('multipart-file-chip-remove').first();
-    const summary = firstRow.getByTestId('multipart-file-summary');
-
-    if (await inlineRemove.count() > 0) {
-      await inlineRemove.click();
-    } else {
-      await expect(summary).toBeVisible();
-      await summary.click();
-      const overflowRemove = page.getByTestId('multipart-file-overflow-remove').first();
-      await expect(overflowRemove).toBeVisible();
-      await overflowRemove.click();
-    }
-    await expect(firstRow.locator('.file-value-cell')).toHaveCount(0);
-    await expect(firstRow.locator('.value-cell')).toBeVisible();
-  });
-};
-
-type AssertionInput = {
-  expr: string;
-  value: string;
-  operator?: string;
-};
-
-/**
- * Add an assertion to the current request (adds to the last empty row)
- * @param page - The page object
- * @param assertion - The assertion to add (expr, value, optional operator)
- * @returns The row index where the assertion was added
- */
-const addAssertion = async (page: Page, assertion: AssertionInput): Promise<number> => {
-  const operator = assertion.operator || 'eq';
-
-  return await test.step(`Add assertion: ${assertion.expr} ${operator} ${assertion.value}`, async () => {
-    const locators = buildCommonLocators(page);
-    const table = locators.assertionsTable();
-
-    // Ensure assertions table is visible
-    await expect(table.container()).toBeVisible();
-
-    // Find the last row (which is the empty row for adding new assertions)
-    const rowCount = await table.allRows().count();
-    const targetRowIndex = rowCount - 1; // Last row is the empty row
-
-    // Wait for the row to exist
-    await expect(table.row(targetRowIndex)).toBeVisible();
-
-    // Fill in the expression
-    const exprInput = table.rowExprInput(targetRowIndex);
-    await expect(exprInput).toBeVisible({ timeout: 2000 });
-    await exprInput.click();
-    await page.keyboard.type(assertion.expr);
-
-    // The component creates a new empty row when the key field is filled
-    await expect(table.allRows()).toHaveCount(rowCount + 1);
-
-    // Fill in the value first (defaults to 'eq value')
-    const valueInput = table.rowValueInput(targetRowIndex);
-    await valueInput.click();
-    await page.keyboard.type(assertion.value);
-
-    // Select the operator from dropdown (if provided and not default 'eq')
-    // This will update the value field to combine operator + value
-    if (assertion.operator && assertion.operator !== 'eq') {
-      const operatorSelect = table.rowOperatorSelect(targetRowIndex);
-      await operatorSelect.selectOption(assertion.operator);
-    }
-
-    // Wait for the assertion to be fully processed
-    // Verify the expression was actually saved by checking the input value
-    const exprInputAfter = table.rowExprInput(targetRowIndex);
-    await expect(exprInputAfter).toHaveValue(assertion.expr, { timeout: 2000 });
-
-    return targetRowIndex;
-  });
-};
-
-/**
- * Edit an assertion at a specific row index
- * @param page - The page object
- * @param rowIndex - The row index of the assertion to edit
- * @param assertion - The assertion data to update (expr, value, optional operator)
- * @returns void
- */
-const editAssertion = async (page: Page, rowIndex: number, assertion: AssertionInput) => {
-  const operator = assertion.operator || 'eq';
-
-  await test.step(`Edit assertion at row ${rowIndex}: ${assertion.expr} ${operator} ${assertion.value}`, async () => {
-    const locators = buildCommonLocators(page);
-    const table = locators.assertionsTable();
-
-    // Ensure assertions table is visible
-    await expect(table.container()).toBeVisible();
-
-    // Wait for the row to exist
-    await expect(table.row(rowIndex)).toBeVisible();
-
-    // Update the expression
-    const exprInput = table.rowExprInput(rowIndex);
-    await expect(exprInput).toBeVisible({ timeout: 2000 });
-    await exprInput.click();
-    // Clear the input and type new value - use triple-click to select all (works cross-platform)
-    await exprInput.click({ clickCount: 3 });
-    await page.keyboard.press('Backspace'); // Clear selection
-    await page.keyboard.type(assertion.expr);
-
-    // Update the operator from dropdown (if provided)
-    if (assertion.operator) {
-      const operatorSelect = table.rowOperatorSelect(rowIndex);
-      await operatorSelect.selectOption(assertion.operator);
-    }
-
-    // Update the value (just the value, operator is already selected)
-    // The value cell contains a SingleLineEditor, so we need to click and type
-    const valueInput = table.rowValueInput(rowIndex);
-    await valueInput.click({ clickCount: 3 });
-    await page.keyboard.press('Backspace'); // Clear selection
-    await page.keyboard.type(assertion.value);
-  });
-};
-
-/**
- * Delete an assertion from the current request by row index
- * @param page - The page object
- * @param rowIndex - The row index of the assertion to delete
- * @returns void
- */
-const deleteAssertion = async (page: Page, rowIndex: number) => {
-  await test.step(`Delete assertion at row ${rowIndex}`, async () => {
-    const locators = buildCommonLocators(page);
-    const table = locators.assertionsTable();
-
-    await expect(table.container()).toBeVisible();
-
-    const initialRowCount = await table.allRows().count();
-    const deleteButton = table.rowDeleteButton(rowIndex);
-
-    await deleteButton.click();
-    await expect(table.allRows()).toHaveCount(initialRowCount - 1);
-  });
-};
-
-/**
- * Save the current request and verify success toast
- * @param page - The page object
- * @returns void
- */
-const saveRequest = async (page: Page) => {
-  await test.step('Save request', async () => {
-    const saveShortcut = process.platform === 'darwin' ? 'Meta+s' : 'Control+s';
-    await page.keyboard.press(saveShortcut);
-    await expect(page.getByText('Request saved successfully').last()).toBeVisible({ timeout: 3000 });
-    await page.waitForTimeout(200);
-  });
-};
-
-/**
- * Click the gRPC "Add Message" button to append a new message to the request
- * @param page - The page object
- */
-const addGrpcMessage = async (page: Page) => {
-  await test.step('Add gRPC message', async () => {
-    const locators = buildGrpcCommonLocators(page);
-    const messages = locators.request.messages();
-    const before = await messages.count();
-    await locators.request.addMessageButton().click();
-    await expect(messages).toHaveCount(before + 1);
-  });
-};
-
-/**
- * Click the "Generate sample" button on a gRPC message to populate it with a sample payload
- * @param page - The page object
- * @param index - The 0-based index of the message (default: 0)
- */
-const generateGrpcSampleMessage = async (page: Page, index: number = 0) => {
-  await test.step(`Generate sample for gRPC message #${index}`, async () => {
-    const locators = buildGrpcCommonLocators(page);
-    await locators.request.regenerateMessage(index).click();
-  });
-};
-
 /**
  * Open the gRPC method dropdown and select a method by name
  * @param page - The page object
@@ -1746,54 +1265,6 @@ const selectGrpcMethod = async (page: Page, methodName: string) => {
     await locators.method.dropdown().waitFor({ state: 'visible', timeout: 5000 });
     await locators.method.item(methodName).first().click();
     await expect(locators.method.selectedName()).toContainText(methodName);
-  });
-};
-
-/**
- * Open a gRPC request from the sidebar, wait for its method to resolve, and send it.
- * Does not wait for the response — assert on it in the caller, since a call may end in a
- * status, a stream, or a script error card.
- * @param page - The page object
- * @param requestName - The name of the request in the sidebar
- * @param method - The expected method on the dropdown trigger (e.g. "HelloService/SayHello")
- */
-const sendGrpcRequest = async (page: Page, requestName: string, method: string) => {
-  await test.step(`Send gRPC request "${requestName}"`, async () => {
-    const locators = buildGrpcCommonLocators(page);
-
-    await locators.sidebar.request(requestName).click();
-    await expect(locators.tabs.activeRequestTab()).toContainText(requestName, { timeout: 30000 });
-    await expect(locators.method.dropdownTrigger()).toContainText(method, { timeout: 30000 });
-    await locators.request.sendButton().click();
-  });
-};
-
-/**
- * Send a streaming gRPC request, stream the given authored messages, then end the call and
- * wait for it to close with status 0.
- * @param page - The page object
- * @param requestName - The name of the request in the sidebar
- * @param method - The expected method on the dropdown trigger (e.g. "HelloService/BidiHello")
- * @param messageIndexes - 0-based indexes of the authored messages to stream, in order
- */
-const streamGrpcMessagesAndEndCall = async (
-  page: Page,
-  requestName: string,
-  method: string,
-  messageIndexes: number[]
-) => {
-  await test.step(`Stream messages [${messageIndexes.join(', ')}] on "${requestName}" and end the call`, async () => {
-    const locators = buildGrpcCommonLocators(page);
-
-    await sendGrpcRequest(page, requestName, method);
-    await expect(locators.request.endConnectionButton()).toBeVisible({ timeout: 30000 });
-
-    for (const index of messageIndexes) {
-      await locators.request.sendMessage(index).click();
-    }
-
-    await locators.request.endConnectionButton().click();
-    await expect(locators.response.statusCode()).toHaveText(/^0$/, { timeout: 30000 });
   });
 };
 
@@ -1913,172 +1384,6 @@ const switchWorkspace = async (page: Page, workspaceName: string) => {
   });
 };
 
-type ScriptSubTab = 'pre-request' | 'post-response' | 'before-call-start' | 'before-message-send' | 'after-message-receive' | 'after-call-end';
-
-/**
- * Navigate to a Script sub-tab (pre-request / post-response for http & graphql, the lifecycle
- * hooks for gRPC)
- * @param page - The page object
- * @param subTab - The sub-tab to select
- */
-const selectScriptSubTab = async (page: Page, subTab: ScriptSubTab) => {
-  await test.step(`Select Script sub-tab "${subTab}"`, async () => {
-    await selectRequestPaneTab(page, 'Script');
-    const locators = buildCommonLocators(page);
-    const tabTrigger = locators.paneTabs.tabTrigger(subTab);
-    const overflowTrigger = locators.paneTabs.scriptSubTabsOverflowTrigger();
-
-    // The sub-tab row re-measures via ResizeObserver/rAF, so a trigger can detach mid-click.
-    // Retry the whole sequence so a mid-action re-layout doesn't fail the test.
-    await expect(async () => {
-      if (await tabTrigger.isVisible()) {
-        await tabTrigger.click({ timeout: 2000 });
-        await expect(tabTrigger).toContainClass('active', { timeout: 2000 });
-        return;
-      }
-
-      if (await overflowTrigger.isVisible()) {
-        const item = locators.paneTabs.overflowItem(subTab);
-        // The chevron toggles the menu, so clicking it again after a failed attempt would close it.
-        if (!(await item.isVisible())) {
-          await overflowTrigger.click({ timeout: 2000 });
-        }
-        await item.waitFor({ state: 'visible', timeout: 2000 });
-        await item.click({ timeout: 2000 });
-        // Selecting pulls the tab into the visible row, so its trigger exists again.
-        await expect(tabTrigger).toContainClass('active', { timeout: 2000 });
-        return;
-      }
-
-      throw new Error(`Script sub-tab "${subTab}" not found in visible tabs or overflow dropdown`);
-    }).toPass({ timeout: 15000 });
-  });
-};
-
-/**
- * Clear and type into a CodeMirror editor identified by test ID
- * @param page - The page object
- * @param editorTestId - The test ID of the editor container
- * @param newContent - The content to type
- */
-const editCodeMirrorEditor = async (page: Page, editorTestId: string, newContent: string) => {
-  await test.step(`Edit CodeMirror editor "${editorTestId}"`, async () => {
-    const locators = buildCommonLocators(page);
-    const editor = locators.codeMirror.byTestId(editorTestId);
-    await editor.waitFor({ state: 'visible' });
-    const textarea = editor.locator('textarea[tabindex="0"]');
-    await textarea.focus();
-    const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
-    await page.keyboard.press(selectAll);
-    await page.keyboard.press('Backspace');
-    await page.keyboard.type(newContent, { delay: 5 });
-  });
-};
-
-/**
- * Replace a CodeMirror editor's content through the CodeMirror API instead of typing it.
- * Auto-close-bracket and auto-indent handling corrupts content typed character by character,
- * so anything holding `{{var}}` tokens or several lines of braces goes through here.
- * @param page - The page object
- * @param editorTestId - The test ID of the editor container
- * @param content - The content to write
- */
-const setCodeMirrorEditorValue = async (page: Page, editorTestId: string, content: string) => {
-  await test.step(`Set CodeMirror editor "${editorTestId}"`, async () => {
-    const editor = buildCommonLocators(page).codeMirror.byTestId(editorTestId);
-    await editor.waitFor({ state: 'visible' });
-    await editor.evaluate((el, value) => {
-      const cm = (el as any).CodeMirror;
-      if (!cm) {
-        throw new Error('CodeMirror instance not found');
-      }
-      cm.setValue(value);
-    }, content);
-  });
-};
-
-/**
- * Add a pre-request script (navigates to Script > Pre Request and replaces editor content)
- * @param page - The page object
- * @param content - The script content to add
- */
-const addPreRequestScript = async (page: Page, content: string) => {
-  await test.step('Add pre-request script', async () => {
-    await selectScriptSubTab(page, 'pre-request');
-    await editCodeMirrorEditor(page, 'pre-request-script-editor', content);
-  });
-};
-
-/**
- * Add a post-response script (navigates to Script > Post Response and replaces editor content)
- * @param page - The page object
- * @param content - The script content to add
- */
-const addPostResponseScript = async (page: Page, content: string) => {
-  await test.step('Add post-response script', async () => {
-    await selectScriptSubTab(page, 'post-response');
-    await editCodeMirrorEditor(page, 'post-response-script-editor', content);
-  });
-};
-
-/**
- * Write a script into a Script sub-tab (navigates to the sub-tab and replaces editor content)
- * @param page - The page object
- * @param subTab - The Script sub-tab to author
- * @param content - The script content to add
- */
-const writeScriptContent = async (page: Page, subTab: ScriptSubTab, content: string) => {
-  await test.step(`Add ${subTab} script`, async () => {
-    await selectScriptSubTab(page, subTab);
-    await editCodeMirrorEditor(page, `${subTab}-script-editor`, content);
-  });
-};
-
-/**
- * Read the content of a Script sub-tab editor
- * @param page - The page object
- * @param subTab - The Script sub-tab to read
- */
-const readScriptContent = async (page: Page, subTab: ScriptSubTab): Promise<string> => {
-  await selectScriptSubTab(page, subTab);
-  const editorTestId = `${subTab}-script-editor`;
-  return buildCommonLocators(page)
-    .codeMirror.byTestId(editorTestId)
-    .evaluate((el: any, testId: string) => {
-      const cm = el.CodeMirror;
-      if (!cm) throw new Error(`CodeMirror instance not found for "${testId}"`);
-      return cm.getValue();
-    }, editorTestId);
-};
-
-/**
- * Read the content of the request's Body editor
- * @param page - The page object
- */
-const readRequestBody = async (page: Page): Promise<string> => {
-  await selectRequestPaneTab(page, 'Body');
-  const editorTestId = 'request-body-editor';
-  return buildCommonLocators(page)
-    .codeMirror.byTestId(editorTestId)
-    .evaluate((el: any, testId: string) => {
-      const cm = el.CodeMirror;
-      if (!cm) throw new Error(`CodeMirror instance not found for "${testId}"`);
-      return cm.getValue();
-    }, editorTestId);
-};
-
-/**
- * Add a test script (navigates to Tests tab and replaces editor content)
- * @param page - The page object
- * @param content - The test script content to add
- */
-const addTestScript = async (page: Page, content: string) => {
-  await test.step('Add test script', async () => {
-    await selectRequestPaneTab(page, 'Tests');
-    await editCodeMirrorEditor(page, 'test-script-editor', content);
-  });
-};
-
 /**
  * Add a script to a folder's Settings → Script tab.
  * @param page - The page object
@@ -2129,55 +1434,6 @@ const addCollectionScript = async (
     await page.keyboard.press(saveShortcut);
     await page.waitForTimeout(400);
   });
-};
-
-const fieldEditor = (page: Page, labelText: string) =>
-  page
-    .locator('label')
-    .filter({ hasText: new RegExp(`^${escapeRegExp(labelText)}$`) })
-    .locator('xpath=following-sibling::*[contains(@class,"single-line-editor-wrapper")][1]')
-    .locator('.CodeMirror');
-
-/**
- * Open the auth mode dropdown and pick a mode by its visible label.
- * @param page - The page object
- * @param modeLabel - Dropdown item text (e.g. 'Bearer Token', 'Basic Auth')
- */
-const selectAuthMode = async (page: Page, modeLabel: string) => {
-  await page.locator('.auth-mode-label').click();
-  await page.locator('.dropdown-item').filter({ hasText: modeLabel }).click();
-};
-
-/**
- * Type into a single-line CodeMirror editor identified by its sibling label.
- * @param page - The page object
- * @param labelText - Exact label text next to the editor
- * @param value - The text to type
- */
-const typeIntoField = async (page: Page, labelText: string, value: string) => {
-  await fieldEditor(page, labelText).click();
-  await page.keyboard.type(value);
-};
-
-/** Sets the field next to a label to this text. */
-const writeFieldValue = async (page: Page, labelText: string, value: string) => {
-  const editor = fieldEditor(page, labelText).first();
-  await editor.waitFor({ state: 'visible' });
-  await editor.evaluate((el: any, nextValue: string) => {
-    el.CodeMirror?.setValue(nextValue);
-  }, value);
-  await expect.poll(() => readField(page, labelText)).toBe(value);
-};
-
-/**
- * Read the current value of a single-line CodeMirror editor identified by its sibling label.
- * @param page - The page object
- * @param labelText - Exact label text next to the editor
- */
-const readField = async (page: Page, labelText: string): Promise<string> => {
-  const editor = fieldEditor(page, labelText).first();
-  await editor.waitFor({ state: 'visible' });
-  return editor.evaluate((el: any) => (el as any).CodeMirror?.getValue() ?? '');
 };
 
 const openFolderSettings = async (page: Page, collectionName: string, folderName = 'api') => {
@@ -2300,10 +1556,6 @@ const LINK_AWARE_METHOD_LABEL: Record<LinkAwareRequestType, string | null> = {
   graphql: 'GQL',
   grpc: 'gRPC',
   ws: 'WS'
-};
-
-const setCodeMirrorValue = async (cm: Locator, value: string) => {
-  await cm.evaluate((el: any, v: string) => el.CodeMirror?.setValue(v), value);
 };
 
 const linkAwareUrlBarCm = (page: Page, type: LinkAwareRequestType): Locator =>
@@ -2699,26 +1951,6 @@ const readAppEditor = (page: Page): Promise<string | undefined> =>
 const requestPaneAppTab = (page: Page) => page.getByTestId('responsive-tab-app');
 
 /**
- * Open the request pane's tab overflow dropdown if it is present. Tabs that
- * don't fit the pane width land there instead of the visible tab row.
- * @param page - The page object
- */
-const openRequestPaneTabOverflow = async (page: Page) => {
-  const overflowButton = page.locator('[data-testid="request-pane"] .tabs .more-tabs');
-  if (await overflowButton.isVisible()) {
-    await overflowButton.click();
-  }
-};
-
-/**
- * A tab entry inside the request pane's overflow dropdown.
- * @param page - The page object
- * @param label - The tab label to match (exact match via regex recommended)
- */
-const requestPaneOverflowTabItem = (page: Page, label: string | RegExp) =>
-  page.locator('.tippy-box .dropdown-item').filter({ hasText: label });
-
-/**
  * The keep-alive preview slot of the ACTIVE tab. The AppPreviewKeepAlive
  * overlay keeps app views of background tabs mounted (hidden) and the Electron
  * instance is shared across tests in a worker, so bare app-view lookups can
@@ -2947,22 +2179,6 @@ const scrollVirtuosoRowIntoView = async (page: Page, target: Locator) => {
 };
 
 /**
- * Set the active request's URL and save it. Typed char-by-char so CodeMirror
- * tokenizes `{{var}}` references (vs. a bulk fill that skips tokenization).
- * @param page - The page object
- * @param url - The URL to type into the request URL editor
- */
-const setRequestUrlAndSave = async (page: Page, url: string) => {
-  await test.step(`Set request URL: ${url}`, async () => {
-    const { request } = buildCommonLocators(page);
-    const saveShortcut = process.platform === 'darwin' ? 'Meta+s' : 'Control+s';
-    await request.urlInput().click();
-    await page.keyboard.type(url);
-    await page.keyboard.press(saveShortcut);
-  });
-};
-
-/**
  * @param page - The page object
  */
 const dismissVarTooltip = async (page: Page) => {
@@ -3052,31 +2268,6 @@ const openSystemProxyPanel = async (page: Page) => {
 
 // Sidebar item actions: clone / copy / paste / rename / create, opened through a
 // row's menu.
-
-const setTextBody = async (page: Page, value: string) => {
-  const { request } = buildCommonLocators(page);
-  await request.bodyModeSelector().click();
-  await page.locator('.dropdown-item').filter({ hasText: 'Text' }).click();
-  await request.bodyEditor().locator('.CodeMirror').first().click();
-  await page.keyboard.type(value);
-};
-
-// Save the active transient (untitled) request via the Save modal, giving it a
-// display name. Waits for the modal to open and close.
-const saveTransientRequestAs = async (page: Page, name: string) => {
-  await test.step(`Save transient request as "${name}"`, async () => {
-    const { sidebar } = buildCommonLocators(page);
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    const dialog = sidebar.saveRequestModal.modal();
-
-    await page.keyboard.press(`${modifier}+s`);
-    await dialog.waitFor({ state: 'visible' });
-    await sidebar.saveRequestModal.nameInput().clear();
-    await sidebar.saveRequestModal.nameInput().fill(name);
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await dialog.waitFor({ state: 'hidden' });
-  });
-};
 
 /**
  * Opens the environment import review modal and selects the given files.
@@ -3288,8 +2479,45 @@ export {
   setWindowContentSize
 };
 
-export type { SandboxMode, EnvironmentType, EnvironmentVariable, ImportCollectionOptions, CreateRequestOptions, CreateUntitledRequestOptions, CreateTransientRequestOptions, AssertionInput, LinkAwareRequestType, ScriptSubTab };
+export type { SandboxMode, EnvironmentType, EnvironmentVariable, ImportCollectionOptions, LinkAwareRequestType };
+export type { AssertionInput } from '../../../playwright/pages/request/assertions';
+export type { ScriptSubTab } from '../../../playwright/pages/request/script';
+export type { CreateRequestOptions, CreateUntitledRequestOptions, CreateTransientRequestOptions } from '../../../playwright/pages/request/create';
 
 // Moved to playwright/pages/sidebar/. Re-exported for existing deep imports of utils/page/actions.
-export { clickEmptySidebarSpace, collapseFolder, expandCollection, expandFolder, openExampleFromSidebar, openFolderRequest, openRequest, openRequestInFolder, openfolder, toggleOpenCollectionItem, toggleRequestExamples } from '../../../playwright/pages/sidebar/collection-tree';
-export { chooseCloneLocation, cloneItem, copyItem, createFolder, createFolderViaModal, createRequestFromEmptyStateCta, createRequestViaModal, createRequestWithEditedFilename, deleteRequest, openCloneCollectionModal, openItemActionsMenu, openNewFolderModal, openNewRequestModal, openRenameModal, pasteIntoCollection, pasteIntoFolder, renameCollectionItem, renameItemTo, renameViaFilename, revealFilesystemName } from '../../../playwright/pages/sidebar/item-actions';
+export {
+  clickEmptySidebarSpace,
+  collapseFolder,
+  expandCollection,
+  expandFolder,
+  openExampleFromSidebar,
+  openFolderRequest,
+  openRequest,
+  openRequestInFolder,
+  openfolder,
+  toggleOpenCollectionItem,
+  toggleRequestExamples
+} from '../../../playwright/pages/sidebar/collection-tree';
+
+export {
+  chooseCloneLocation,
+  cloneItem,
+  copyItem,
+  createFolder,
+  createFolderViaModal,
+  createRequestFromEmptyStateCta,
+  createRequestViaModal,
+  createRequestWithEditedFilename,
+  deleteRequest,
+  openCloneCollectionModal,
+  openItemActionsMenu,
+  openNewFolderModal,
+  openNewRequestModal,
+  openRenameModal,
+  pasteIntoCollection,
+  pasteIntoFolder,
+  renameCollectionItem,
+  renameItemTo,
+  renameViaFilename,
+  revealFilesystemName
+} from '../../../playwright/pages/sidebar/item-actions';

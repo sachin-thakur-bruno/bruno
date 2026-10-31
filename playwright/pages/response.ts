@@ -306,3 +306,11 @@ export const resetResponse = async (page: Page) => {
     }
   });
 };
+
+/**
+ * Read the visible response preview editor text.
+ */
+export const readResponsePreviewBody = async (page: Page) => {
+  const texts = await page.getByTestId('response-preview-container').locator('.CodeMirror-scroll').allInnerTexts();
+  return texts.join('\n');
+};

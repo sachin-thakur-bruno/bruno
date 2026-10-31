@@ -1,5 +1,6 @@
 import { Locator, Page, expect, test } from '../..';
 import { buildRequestTabsLocators } from '../request-tabs';
+import { buildOpenCollectionPickerLocators } from '../collection/open-collection-picker';
 import { collectionSlug } from '../../../packages/bruno-app/src/utils/collections/collectionSlug';
 
 export type EmptyStateRequestType = 'http' | 'graphql' | 'grpc' | 'websocket';
@@ -210,7 +211,8 @@ export const buildFolderLocators = (page: Page) => ({
 const buildLocators = (page: Page) => ({
   sidebar: buildSidebarLocators(page),
   folder: buildFolderLocators(page),
-  tabs: buildRequestTabsLocators(page)
+  tabs: buildRequestTabsLocators(page),
+  openCollectionPicker: buildOpenCollectionPickerLocators(page)
 });
 
 /**

@@ -13,7 +13,7 @@ import { buildMigrateToYmlLocators } from './collection/migrate-to-yml';
 import { buildWebsocketCommonLocators } from './websocket';
 import { buildToastLocators } from '../../../playwright/pages/app-shell/toast';
 import { buildSecretVariableFormLocators } from './secret-variable-form';
-import { buildRequestLocators } from '../request';
+import { buildRequestLocators } from '../../../playwright/pages/request/pane';
 import { buildCollectionHeaderLocators } from './collection/collection-header';
 import { buildCollectionProxyLocators } from './collection/proxy';
 import { buildCodeMirrorLocators } from './code-mirror';
@@ -36,6 +36,11 @@ import { buildFolderLocators } from '../../../playwright/pages/sidebar/collectio
 import { buildItemActionLocators } from '../../../playwright/pages/sidebar/item-actions';
 import { buildResponseLocators } from '../../../playwright/pages/response';
 import { buildRequestTabsLocators } from '../../../playwright/pages/request-tabs';
+import { buildPaneTabsLocators } from '../../../playwright/pages/components/pane-tabs';
+import { buildTableLocator } from '../../../playwright/pages/components/table';
+import { buildAssertionsTableLocator } from '../../../playwright/pages/request/assertions';
+import { buildGrpcLocators } from '../../../playwright/pages/request/grpc';
+import { buildOpenCollectionPickerLocators } from '../../../playwright/pages/collection/open-collection-picker';
 
 export type PresetRequestType = 'http' | 'graphql' | 'grpc' | 'ws';
 
@@ -81,22 +86,7 @@ export const buildCommonLocators = (page: Page) => ({
   actions: buildItemActionLocators(page),
   dropdown: buildDropdownLocators(page),
   tabs: buildRequestTabsLocators(page),
-  paneTabs: {
-    responsiveTab: (key: string) => page.getByTestId(`responsive-tab-${key}`),
-    // request and response may have more tabs, pass the pane to isolate further.
-    overflowTrigger: (root?: Locator) => (root ?? page).locator('.tabs .more-tabs'),
-    // menu is rendered via portal, hence it rooted to page.
-    overflowItem: (key: string) => page.getByTestId(`menu-dropdown-${key}`),
-    scriptSubTabsOverflowTrigger: () => page.getByTestId('script-sub-tabs').getByTestId('tabs-overflow-trigger'),
-    collectionSettingsTab: (key: string) => page.getByTestId(`collection-settings-tab-${key}`),
-    folderSettingsTab: (key: string) => page.getByTestId(`folder-settings-tab-${key}`),
-    folderScriptTab: (key: 'pre-request' | 'post-response') => page.getByTestId(`tab-trigger-${key}`),
-    tabTrigger: (key: string) => page.getByTestId(`tab-trigger-${key}`),
-    collectionSettingsContent: () => page.locator('.collection-settings-content'),
-    requestsNotLoadedTable: () => page.getByTestId('requests-not-loaded'),
-    overviewInvalidFilesCount: () => page.getByTestId('info-invalid-files-count'),
-    folderSettingsContent: () => page.locator('.folder-settings-content')
-  },
+  paneTabs: buildPaneTabsLocators(page),
   docs: buildDocsLocators(page),
   aiAssist: {
     trigger: (scriptType: string) => page.getByTestId(`ai-assist-trigger-${scriptType}`),
@@ -107,22 +97,7 @@ export const buildCommonLocators = (page: Page) => ({
   },
   folder: buildFolderLocators(page),
   modal: buildModalLocators(page),
-  openCollectionPicker: {
-    list: () => page.getByTestId('selection-list'),
-    titles: () => page.getByTestId('selection-list').locator('.selection-item-title'),
-    descriptions: () => page.getByTestId('selection-list').locator('.selection-item-description'),
-    item: (name: string) =>
-      page.getByTestId('selection-list').getByRole('listitem').filter({
-        has: page.getByText(name, { exact: true })
-      }),
-    itemCheckbox: (name: string) =>
-      page.getByTestId('selection-list').getByRole('listitem').filter({
-        has: page.getByText(name, { exact: true })
-      }).getByRole('checkbox'),
-    count: () => page.getByTestId('selection-count'),
-    selectAllToggle: () => page.getByTestId('selection-select-all-toggle').getByRole('checkbox'),
-    searchInput: () => page.getByTestId('selection-search-input')
-  },
+  openCollectionPicker: buildOpenCollectionPickerLocators(page),
   codeMirror: buildCodeMirrorLocators(page),
   // The DataTypeSelector exposes a stable trigger per row (request/folder/collection
   // vars + env vars). Compact mode shows an icon; full mode shows `.type-label`.
@@ -297,31 +272,7 @@ export const buildCommonLocators = (page: Page) => ({
    * @param testId - The testId of the table
    * @returns Table locators object
    */
-  table: (testId: string) => {
-    const container = () => page.getByTestId(testId);
-    const getBodyRow = (index?: number) => {
-      const locator = container().locator('tbody tr');
-      return index !== undefined ? locator.nth(index) : locator;
-    };
-
-    return {
-      container,
-      row: (index?: number) => getBodyRow(index),
-      // EditableTable rows carry data-row-name derived from the key column.
-      rowByName: (name: string) => container().locator(`tbody tr[data-row-name="${name}"]`),
-      rowCell: (columnKey: string, rowIndex?: number) => {
-        const row = getBodyRow(rowIndex);
-        return row.getByTestId(`column-${columnKey}`);
-      },
-      rowCheckbox: (rowIndex: number) => getBodyRow(rowIndex).getByTestId('column-checkbox'),
-      rowCheckboxByName: (name: string) =>
-        container().locator(`tbody tr[data-row-name="${name}"]`).getByTestId('column-checkbox'),
-      rowDeleteButton: (rowIndex: number) => getBodyRow(rowIndex).getByTestId('column-delete'),
-      allRows: () => container().locator('tbody tr'),
-      rowNameInput: (row: Locator) => row.locator('input[type="text"]').first(),
-      rowValueEditor: (row: Locator) => row.getByTestId('column-value').locator('.CodeMirror').first()
-    };
-  },
+  table: buildTableLocator(page),
   /**
    * Assertions table locators (extends generic table with assertion-specific helpers)
    * @returns Assertions table locators object
@@ -337,23 +288,7 @@ export const buildCommonLocators = (page: Page) => ({
       saveButton: () => container().getByRole('button', { name: 'Save', exact: true })
     };
   },
-  assertionsTable: () => {
-    const baseTable = buildCommonLocators(page).table('assertions-table');
-    return {
-      ...baseTable,
-      // Assertion-specific helpers
-      rowExprInput: (rowIndex: number) => {
-        const cell = baseTable.rowCell('name', rowIndex);
-        // Wait for the cell to be visible, then find the textbox
-        return cell.getByRole('textbox').or(cell.locator('input[type="text"]'));
-      },
-      rowOperatorSelect: (rowIndex: number) => {
-        const cell = baseTable.rowCell('operator', rowIndex);
-        return cell.getByTestId('assertion-operator-select').or(cell.locator('select'));
-      },
-      rowValueInput: (rowIndex: number) => baseTable.rowCell('value', rowIndex)
-    };
-  }
+  assertionsTable: buildAssertionsTableLocator(page)
 });
 
 const buildTimelineHeaderRow = (page: Page, item: Locator, name: string) =>
@@ -363,63 +298,9 @@ const buildTimelineHeaderRow = (page: Page, item: Locator, name: string) =>
 
 export const getTableCell = (row: any, index: number) => row.locator('td').nth(index + 1);
 
-type GrpcTestSectionKey = 'beforeCallStart' | 'beforeMessageSend' | 'afterMessageReceive' | 'afterCallEnd';
-
 export const buildGrpcCommonLocators = (page: Page) => ({
   ...buildCommonLocators(page),
-  method: {
-    dropdownTrigger: () => page.getByTestId('grpc-method-dropdown-trigger'),
-    indicator: () => page.getByTestId('grpc-method-indicator'),
-    dropdown: () => page.getByTestId('grpc-methods-dropdown'),
-    item: (methodName: string) =>
-      page.getByTestId('grpc-methods-dropdown').getByTestId('grpc-method-item').filter({ hasText: methodName }),
-    selectedName: () => page.getByTestId('selected-grpc-method-name')
-  },
-  request: {
-    queryUrlContainer: () => page.getByTestId('grpc-query-url-container'),
-    sendButton: () => page.getByTestId('grpc-send-request-button'),
-    messagesContainer: () => page.getByTestId('grpc-messages-container'),
-    messages: () => page.getByTestId('grpc-messages-container').locator('.message-container'),
-    addMessageButton: () => page.getByTestId('grpc-add-message-button'),
-    regenerateMessage: (index: number) => page.getByTestId(`grpc-regenerate-message-${index}`),
-    sendMessage: (index: number) => page.getByTestId(`grpc-send-message-${index}`),
-    endConnectionButton: () => page.getByTestId('grpc-end-connection-button'),
-    cancelConnectionButton: () => page.getByTestId('grpc-cancel-connection-button')
-  },
-  response: {
-    statusCode: () => page.getByTestId('grpc-response-status-code'),
-    statusText: () => page.getByTestId('grpc-response-status-text'),
-    content: () => page.getByTestId('grpc-response-content'),
-    container: () => page.getByTestId('grpc-responses-container'),
-    singleResponse: () => page.getByTestId('grpc-single-response'),
-    list: () => page.getByTestId('grpc-responses-list'),
-    responseItem: (index: number) => page.getByTestId(`grpc-response-item-${index}`),
-    responseItems: () => page.locator('[data-testid^="grpc-response-item-"]'),
-    tabCount: () => page.getByRole('tab', { name: 'Response' }).getByTestId('grpc-tab-response-count'),
-    tests: {
-      passedCount: () => page.getByTestId('responsive-tab-tests').getByTestId('grpc-tests-passed-count'),
-      failedCount: () => page.getByTestId('responsive-tab-tests').getByTestId('grpc-tests-failed-count'),
-      section: (hook: GrpcTestSectionKey) => page.getByTestId(`grpc-test-section-${hook}`),
-      summary: (hook: GrpcTestSectionKey) => page.getByTestId(`grpc-test-section-${hook}`).locator('.test-summary'),
-      rows: (hook: GrpcTestSectionKey) => page.getByTestId(`grpc-test-section-${hook}`).getByTestId('test-result-item'),
-      passedRows: (hook: GrpcTestSectionKey) =>
-        page
-          .getByTestId(`grpc-test-section-${hook}`)
-          .getByTestId('test-result-item')
-          .filter({ has: page.getByTestId('test-result-icon-pass') }),
-      failedRows: (hook: GrpcTestSectionKey) =>
-        page
-          .getByTestId(`grpc-test-section-${hook}`)
-          .getByTestId('test-result-item')
-          .filter({ has: page.getByTestId('test-result-icon-fail') }),
-      /** The "Message N" label a message hook's results are grouped under, 0-based */
-      messageGroup: (hook: GrpcTestSectionKey, messageIndex: number) =>
-        page.getByTestId(`grpc-test-section-${hook}`).getByTestId(`grpc-test-message-group-${messageIndex}`),
-      /** Every "Message N" label in a section, so a per-message hook's run count can be asserted */
-      messageGroups: (hook: GrpcTestSectionKey) =>
-        page.getByTestId(`grpc-test-section-${hook}`).locator('[data-testid^="grpc-test-message-group-"]')
-    }
-  }
+  ...buildGrpcLocators(page)
 });
 
 export { buildResponseErrorsLocators } from '../../../playwright/pages/response';

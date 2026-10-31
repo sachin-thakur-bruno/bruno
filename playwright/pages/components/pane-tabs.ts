@@ -1,5 +1,25 @@
-import { test, expect, Page } from '../..';
+import { test, expect, Page, Locator } from '../..';
 import { escapeRegExp } from '../../support/helpers';
+
+/**
+ * Locators for pane tabs: responsive tabs, the overflow menu, and settings tabs.
+ */
+export const buildPaneTabsLocators = (page: Page) => ({
+  responsiveTab: (key: string) => page.getByTestId(`responsive-tab-${key}`),
+  // request and response may have more tabs, pass the pane to isolate further.
+  overflowTrigger: (root?: Locator) => (root ?? page).locator('.tabs .more-tabs'),
+  // menu is rendered via portal, hence it rooted to page.
+  overflowItem: (key: string) => page.getByTestId(`menu-dropdown-${key}`),
+  scriptSubTabsOverflowTrigger: () => page.getByTestId('script-sub-tabs').getByTestId('tabs-overflow-trigger'),
+  collectionSettingsTab: (key: string) => page.getByTestId(`collection-settings-tab-${key}`),
+  folderSettingsTab: (key: string) => page.getByTestId(`folder-settings-tab-${key}`),
+  folderScriptTab: (key: 'pre-request' | 'post-response') => page.getByTestId(`tab-trigger-${key}`),
+  tabTrigger: (key: string) => page.getByTestId(`tab-trigger-${key}`),
+  collectionSettingsContent: () => page.locator('.collection-settings-content'),
+  requestsNotLoadedTable: () => page.getByTestId('requests-not-loaded'),
+  overviewInvalidFilesCount: () => page.getByTestId('info-invalid-files-count'),
+  folderSettingsContent: () => page.locator('.folder-settings-content')
+});
 
 /**
  * Select a tab in a request or response pane, including tabs hidden in the overflow menu.
